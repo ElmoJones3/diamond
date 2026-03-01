@@ -23,11 +23,11 @@
  * `sync_docs` MCP tool — the MCP server and CLI share the same implementation.
  */
 
-import { type RegistryEntry, RegistryManager } from '../core/registry.js';
-import { SearchService } from '../core/search.js';
-import { StorageManager } from '../core/storage.js';
-import { CrawlerService } from '../crawler/crawler.js';
-import { DiscoveryService } from '../crawler/discovery.js';
+import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
+import { SearchService } from '#src/core/search.js';
+import { StorageManager } from '#src/core/storage.js';
+import { CrawlerService } from '#src/crawler/crawler.js';
+import { DiscoveryService } from '#src/crawler/discovery.js';
 
 export interface SyncCommandOptions {
   /** The short identifier for this library, e.g. "msw" or "zod". */
@@ -44,6 +44,8 @@ export interface SyncCommandOptions {
   concurrency?: number;
   /** Hard cap on total pages crawled. Useful for testing on large sites. */
   limit?: number;
+  /** A short human-readable description of the library (e.g. "API mocking library for browser and Node.js"). */
+  description?: string;
 }
 
 export async function syncCommand(url: string, options: SyncCommandOptions) {
@@ -146,6 +148,8 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     type: 'docs',
     name: libId,
     homepage: url,
+    // Prefer the newly supplied description; fall back to whatever was stored before.
+    description: options.description ?? (existing?.type === 'docs' ? existing.description : undefined),
     versions: {
       // Preserve any previously synced versions
       ...(existing?.type === 'docs' ? existing.versions : {}),

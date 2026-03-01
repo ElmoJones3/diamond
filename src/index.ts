@@ -29,10 +29,14 @@
 
 import { Command } from 'commander';
 
-import { crawlCommand } from './cli/crawl.js';
-import { addRepoCommand } from './cli/repo.js';
-import { syncCommand } from './cli/sync.js';
-import { McpServer } from './mcp/server.js';
+import { crawlCommand } from '#src/cli/crawl.js';
+import { gcCommand } from '#src/cli/gc.js';
+import { installCommand } from '#src/cli/install.js';
+import { removeCommand } from '#src/cli/remove.js';
+import { addRepoCommand } from '#src/cli/repo.js';
+import { syncCommand } from '#src/cli/sync.js';
+import { watchCommand } from '#src/cli/watch.js';
+import { McpServer } from '#src/mcp/server.js';
 
 const program = new Command();
 
@@ -75,13 +79,14 @@ program
 // -----------------------------------------------------------------------------
 program
   .command('sync')
-  .description('Crawl a documentation site and store it in Diamond\'s global registry')
+  .description("Crawl a documentation site and store it in Diamond's global registry")
   .argument('<url>', 'The root URL to start crawling from')
   .option('--key <name>', 'Library identifier in the registry (e.g. "msw")', 'docs')
   .option('--ver <string>', 'Pin a specific version (default: auto-detect)', 'latest')
   .option('--recursive', 'Follow internal links to crawl sub-pages', false)
   .option('--concurrency <number>', 'Pages to process simultaneously', '5')
   .option('--limit <number>', 'Stop after this many pages')
+  .option('--description <text>', 'Short description of the library')
   .action(async (url, options) => {
     console.warn(`Entering sync command for ${url}...`);
     try {
@@ -91,6 +96,7 @@ program
         recursive: options.recursive,
         concurrency: parseInt(options.concurrency, 10),
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
+        description: options.description,
       });
     } catch (e) {
       console.error('Fatal error during sync:', e);
@@ -115,17 +121,110 @@ program
   });
 
 // -----------------------------------------------------------------------------
+// install — register Diamond as an MCP server in AI coding tools
+// -----------------------------------------------------------------------------
+program
+  .command('install')
+  .description('Register Diamond as an MCP server in AI coding tools')
+  .option('--claude-code', 'Install into Claude Code (~/.claude.json)')
+  .option('--claude-desktop', 'Install into Claude Desktop')
+  .option('--cursor', 'Install into Cursor (~/.cursor/mcp.json)')
+  .option('--gemini-cli', 'Install into Gemini CLI (~/.gemini/settings.json)')
+  .action(async (options) => {
+    const targets: string[] = [];
+    if (options.claudeCode) targets.push('claude-code');
+    if (options.claudeDesktop) targets.push('claude-desktop');
+    if (options.cursor) targets.push('cursor');
+    if (options.geminiCli) targets.push('gemini-cli');
+
+    if (targets.length === 0) {
+      console.warn('Specify one or more targets:\n');
+      console.warn('  diamond install --claude-code');
+      console.warn('  diamond install --claude-desktop');
+      console.warn('  diamond install --cursor');
+      console.warn('  diamond install --gemini-cli');
+      console.warn('\nFlags can be combined: diamond install --claude-code --gemini-cli');
+      process.exit(0);
+    }
+
+    try {
+      await installCommand({ targets });
+    } catch (e) {
+      console.error('Fatal error during install:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
+// remove — remove a library or repository from the registry
+// -----------------------------------------------------------------------------
+program
+  .command('remove')
+  .description('Remove a library or repository from the Diamond registry')
+  .argument('<id>', 'The registry id to remove (e.g. "msw" or "diamond-core")')
+  .action(async (id) => {
+    try {
+      await removeCommand(id);
+    } catch (e) {
+      console.error('Fatal error removing entry:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
+// gc — garbage collect orphaned CAS blobs
+// -----------------------------------------------------------------------------
+program
+  .command('gc')
+  .description('Remove orphaned blobs from the content-addressable store to reclaim disk space')
+  .action(async () => {
+    try {
+      await gcCommand();
+    } catch (e) {
+      console.error('Fatal error during gc:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
+// watch — live indexing for local repositories
+// -----------------------------------------------------------------------------
+program
+  .command('watch')
+  .description('Watch registered local repositories for changes and update search indices in real-time')
+  .action(async () => {
+    try {
+      await watchCommand();
+    } catch (e) {
+      console.error('Fatal error during watch:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
 // repo — manage local git repositories
 // -----------------------------------------------------------------------------
-const repo = program
-  .command('repo')
-  .description('Manage local git repositories tracked by Diamond');
+const repo = program.command('repo').description('Manage local git repositories tracked by Diamond');
+
+repo
+  .command('remove')
+  .description('Remove a repository from the Diamond registry')
+  .argument('<id>', 'Registry identifier to remove')
+  .action(async (id) => {
+    try {
+      await removeCommand(id);
+    } catch (e) {
+      console.error('Fatal error removing repo:', e);
+      process.exit(1);
+    }
+  });
 
 repo
   .command('add')
   .description('Register a local git repository so Diamond can serve its files over MCP')
   .argument('<path>', 'Path to the repository root (relative or absolute)')
   .option('--key <name>', 'Registry identifier (defaults to the directory name)')
+  .option('--description <text>', 'Short description of the repository')
   .action(async (repoPath, options) => {
     try {
       await addRepoCommand(repoPath, options);

@@ -24,7 +24,8 @@
 
 import path from 'node:path';
 import fs from 'fs-extra';
-import { RegistryManager } from '../core/registry.js';
+import { RegistryManager } from '#src/core/registry.js';
+import { SearchService } from '#src/core/search.js';
 
 /**
  * Register a local git repository in Diamond's registry.
@@ -32,7 +33,7 @@ import { RegistryManager } from '../core/registry.js';
  * @param localPath  Path to the repository root (relative or absolute).
  * @param options.key  Optional identifier override. Defaults to the directory name.
  */
-export async function addRepoCommand(localPath: string, options: { key?: string }) {
+export async function addRepoCommand(localPath: string, options: { key?: string; description?: string }) {
   const registry = new RegistryManager();
   await registry.init();
 
@@ -56,6 +57,7 @@ export async function addRepoCommand(localPath: string, options: { key?: string 
     type: 'repo',
     name: repoId,
     localPath: absolutePath,
+    description: options.description,
     config: {
       syncStrategy: 'git',
       autoPull: true,
@@ -63,6 +65,11 @@ export async function addRepoCommand(localPath: string, options: { key?: string 
     syncedAt: new Date().toISOString(),
   });
 
-  console.warn(`\nSuccess! Repository '${repoId}' is now tracked in the registry.`);
+  // Index the repo immediately so it's searchable
+  const search = new SearchService();
+  console.warn(`Indexing repository '${repoId}'...`);
+  await search.indexRepo(repoId, absolutePath);
+
+  console.warn(`\nSuccess! Repository '${repoId}' is now tracked and indexed.`);
   console.warn(`Local Path: ${absolutePath}`);
 }

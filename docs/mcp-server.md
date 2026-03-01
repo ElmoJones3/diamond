@@ -1,6 +1,6 @@
 # MCP Server
 
-Diamond exposes its capabilities to AI assistants via the Model Context Protocol (MCP). The server runs over stdio — the AI host (Claude Desktop, Cursor, etc.) spawns Diamond as a child process and communicates through JSON-RPC messages on stdin/stdout.
+Diamond exposes its capabilities to AI assistants via the Model Context Protocol (MCP). The server runs over stdio — the AI host (Claude Desktop, Cursor, Gemini CLI, etc.) spawns Diamond as a child process and communicates through JSON-RPC messages on stdin/stdout.
 
 ## Starting the Server
 
@@ -8,18 +8,7 @@ Diamond exposes its capabilities to AI assistants via the Model Context Protocol
 diamond serve
 ```
 
-Or configure it in your AI host's MCP settings (e.g. `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "diamond": {
-      "command": "diamond",
-      "args": ["serve"]
-    }
-  }
-}
-```
+Or configure it in your AI host's MCP settings using `diamond install`.
 
 ## Resources
 
@@ -42,8 +31,6 @@ docs://msw/2.12.10/getting-started
 docs://zod/latest/primitives/string
 ```
 
-The list callback returns all synced `docs` libraries at their `latest` version.
-
 ### `repo://{repo}/{+path}`
 
 Serves a file from a locally indexed git repository. Unlike docs, the file is read directly from the original checkout — no copying occurs.
@@ -57,10 +44,7 @@ Serves a file from a locally indexed git repository. Unlike docs, the file is re
 ```
 repo://diamond-core/src/mcp/server.ts
 repo://my-library/src/index.ts
-repo://my-library/README.md
 ```
-
-The list callback returns all `repo` entries from the registry.
 
 ## Tools
 
@@ -74,34 +58,21 @@ List everything Diamond currently knows about.
 
 **Returns:** The full registry manifest as pretty-printed JSON — all synced `docs` libraries with their version history, and all registered `repo` entries.
 
-**Typical use:** Call this first to see what's available before deciding which library to search or which resource to read.
-
 ---
 
 ### `search_library`
 
-Full-text search across a library's stored documentation.
+Hybrid (Keyword + Semantic) search across a library's docs or a repository's files.
 
 | Input | Type | Description |
 |---|---|---|
 | `lib` | `string` | Library identifier (must be synced) |
-| `query` | `string` | Keywords or a short phrase |
+| `query` | `string` | Keywords or a natural language question |
 | `version` | `string?` | Version to search (default: `"latest"`) |
 
-**Returns:** JSON array of matches, sorted by relevance score:
-```json
-[
-  {
-    "title": "Handlers — Mock Service Worker",
-    "uri": "docs://msw/latest/api/handlers.md",
-    "score": 14.2
-  }
-]
-```
+**Returns:** JSON array of matches, sorted by relevance score.
 
-The returned URIs can be passed directly to the `docs://` resource to fetch the full page.
-
-Search uses MiniSearch with prefix matching (partial words), 20% fuzzy tolerance, and 2× weighting on title matches.
+Search uses a hybrid strategy: **MiniSearch** for exact technical terms and **SBERT vectors** (`all-MiniLM-L6-v2`) for conceptual matching. This allows the AI to find relevant pages even if the exact keywords are missing.
 
 ---
 
@@ -115,12 +86,56 @@ Crawl a documentation site and store it in Diamond's registry.
 | `url` | `string` | Root URL of the documentation site |
 | `recursive` | `boolean?` | Follow sub-page links (default: `true`) |
 | `limit` | `number?` | Cap on total pages crawled |
+| `description` | `string?` | Short description stored in the registry |
+| `version` | `string?` | Pin a specific version (default: auto-detect from URL/meta tags) |
+
+The `description` field is optional but useful — when the AI calls `sync_docs` it already knows what the library is, so it can populate this itself. It surfaces in `list_registry` to help orient future sessions.
 
 **Returns:** A success message on completion.
 
-**Effect:** Crawls the site, writes content to the CAS, builds a search index, and updates the registry. After this call, the library is available via `docs://` resources and `search_library`.
+---
 
-This is a blocking operation — it waits for the full crawl and ingestion to complete before returning.
+### `remove_library`
+
+Remove a library or repository from Diamond's registry.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The registry identifier to remove (e.g. `"msw"`, `"diamond-core"`) |
+
+For `docs` entries, the versioned storage directory is deleted and disk space is reclaimed. CAS blobs (the SHA256 content store) are left intact as they may be shared with other libraries. For `repo` entries, only the registry record is removed — the repository on disk is untouched.
+
+**Returns:** A success message on completion.
+
+---
+
+### `describe_library`
+
+Set or update the description on a registry entry without re-syncing.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The registry identifier to update |
+| `description` | `string` | The description to set |
+
+Useful for annotating entries that were registered before the description field was introduced, or for repos where there is no re-sync path.
+
+**Returns:** A success message on completion.
+
+---
+
+### `list_repo_files`
+
+List the files in a registered repository so the AI can discover what to read.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The repository identifier from the registry |
+| `path` | `string?` | Subdirectory to scope the listing to (default: entire repo) |
+
+Returns a sorted list of `{ path, uri }` objects. Skips `.git`, `node_modules`, `dist`, and binary/lock files. Use the returned `repo://` URIs directly with the Repository File resource to read specific files.
+
+**Returns:** JSON array of `{ path: string, uri: string }`.
 
 ## Recommended Workflow
 
@@ -134,7 +149,7 @@ A typical AI session using Diamond:
    → (if the library isn't synced yet)
 
 3. search_library({ lib: "msw", query: "request handlers" })
-   → find relevant pages
+   → find relevant pages using hybrid search
 
 4. read resource docs://msw/latest/api/handlers
    → read the full page content
@@ -146,4 +161,4 @@ A typical AI session using Diamond:
 When running as an MCP server, stdout is the JSON-RPC transport channel. Any non-protocol output written to stdout corrupts the stream. Diamond routes all human-readable output (progress messages, errors) to stderr via `console.warn` / `console.error`, which MCP hosts safely ignore.
 
 **Why stdio instead of SSE?**
-Stdio is the simplest transport for a local tool: no port management, no authentication, no firewall issues. The MCP SDK supports SSE for remote servers — that's on the roadmap for Diamond's multi-machine use case.
+Stdio is the simplest transport for a local tool: no port management, no authentication, no firewall issues.

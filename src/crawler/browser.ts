@@ -100,7 +100,7 @@ export class BrowserService {
             // Brief pause for the framework to swap in the new panel content.
             await page.waitForTimeout(200);
           }
-        } catch (e) {
+        } catch (_e) {
           // Individual tab click failures are expected (off-screen elements,
           // disabled tabs, etc.) — ignore and move on.
         }

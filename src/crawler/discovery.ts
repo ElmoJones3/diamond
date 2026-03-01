@@ -23,6 +23,7 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
+import robotsParser from 'robots-parser';
 
 export interface DiscoveryOptions {
   rootUrl: string;
@@ -32,6 +33,28 @@ export class DiscoveryService {
   // fast-xml-parser is a zero-dependency XML parser — lighter than a full DOM
   // parser and well-suited for the simple key/value structure of sitemaps.
   private parser = new XMLParser();
+
+  /**
+   * Fetch and create a robots.txt parser for the given origin.
+   */
+  async getRobotsParser(rootUrl: string) {
+    const origin = new URL(rootUrl).origin;
+    const robotsUrl = `${origin}/robots.txt`;
+    const robotsTxt = await this.fetchRobotsTxt(robotsUrl);
+    // robots-parser is CJS; default import not callable under NodeNext without this cast
+    // biome-ignore lint/suspicious/noExplicitAny: robots-parser is CJS; default import not callable under NodeNext without this cast
+    return (robotsParser as any)(robotsUrl, robotsTxt);
+  }
+
+  private async fetchRobotsTxt(url: string): Promise<string> {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) return await resp.text();
+    } catch (_e) {
+      // ignore
+    }
+    return '';
+  }
 
   /**
    * Attempt to collect URLs from the site's sitemap(s).
@@ -62,7 +85,7 @@ export class DiscoveryService {
           if (match[1]) sitemapUrls.add(match[1].trim());
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // robots.txt is optional — many sites don't have one
     }
 
@@ -72,7 +95,7 @@ export class DiscoveryService {
       try {
         const urls = await this.parseSitemap(sitemapUrl);
         discoveredUrls.push(...urls);
-      } catch (e) {
+      } catch (_e) {
         // This sitemap didn't work — move on to the next candidate
       }
     }
@@ -83,20 +106,6 @@ export class DiscoveryService {
 
   /**
    * Fetch and parse a single sitemap XML file.
-   *
-   * Handles two sitemap formats defined by the sitemaps.org spec:
-   *
-   *   • `<urlset>` — a standard sitemap containing `<url><loc>` entries.
-   *     This is the most common format.
-   *
-   *   • `<sitemapindex>` — an index file that lists other sitemap files
-   *     rather than pages directly. Large sites split their sitemap across
-   *     multiple files and use an index to reference them. We recurse into
-   *     each child sitemap to collect all URLs.
-   *
-   * Note: both `<sitemap>` and `<url>` can appear as a single object or as an
-   * array depending on how many entries the sitemap contains. fast-xml-parser
-   * doesn't normalize this, so we coerce to an array explicitly.
    */
   private async parseSitemap(url: string): Promise<string[]> {
     const resp = await fetch(url);
@@ -105,29 +114,47 @@ export class DiscoveryService {
     const text = await resp.text();
     const data = this.parser.parse(text);
 
+    return this.parseSitemapData(data);
+  }
+
+  /**
+   * Parse sitemap data (from XML) into a flat array of URLs.
+   * Handles both <urlset> and <sitemapindex> formats.
+   */
+  private async parseSitemapData(data: {
+    sitemapindex?: { sitemap: { loc: string } | { loc: string }[] };
+    urlset?: { url: { loc: string } | { loc: string }[] };
+  }): Promise<string[]> {
     const urls: string[] = [];
 
-    if (data.sitemapindex && data.sitemapindex.sitemap) {
-      // Sitemap index — each `<sitemap>` entry points to another sitemap file.
-      const sitemaps = Array.isArray(data.sitemapindex.sitemap)
-        ? data.sitemapindex.sitemap
-        : [data.sitemapindex.sitemap];
-
-      for (const sm of sitemaps) {
-        if (sm.loc) {
-          const nested = await this.parseSitemap(sm.loc);
-          urls.push(...nested);
-        }
-      }
-    } else if (data.urlset && data.urlset.url) {
-      // Standard sitemap — each `<url>` entry has a `<loc>` with the page URL.
-      const entries = Array.isArray(data.urlset.url) ? data.urlset.url : [data.urlset.url];
-
-      for (const entry of entries) {
-        if (entry.loc) urls.push(entry.loc);
-      }
+    if (data.sitemapindex?.sitemap) {
+      urls.push(...(await this.handleSitemapIndex(data.sitemapindex.sitemap)));
     }
 
+    if (data.urlset?.url) {
+      urls.push(...this.handleUrlSet(data.urlset.url));
+    }
+
+    return urls;
+  }
+
+  private async handleSitemapIndex(sitemap: { loc: string } | { loc: string }[]): Promise<string[]> {
+    const urls: string[] = [];
+    const sitemaps = Array.isArray(sitemap) ? sitemap : [sitemap];
+    for (const sm of sitemaps) {
+      if (sm.loc) {
+        urls.push(...(await this.parseSitemap(sm.loc)));
+      }
+    }
+    return urls;
+  }
+
+  private handleUrlSet(url: { loc: string } | { loc: string }[]): string[] {
+    const urls: string[] = [];
+    const entries = Array.isArray(url) ? url : [url];
+    for (const entry of entries) {
+      if (entry.loc) urls.push(entry.loc);
+    }
     return urls;
   }
 

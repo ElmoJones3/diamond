@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
-import { CasStore } from './cas.js';
-import { Env } from './env.js';
+import { CasStore } from '#src/core/cas.js';
+import { Env } from '#src/core/env.js';
 
 /**
  * Manages the "Project" view (hardlinks and symlinks) of Diamond's storage.
@@ -23,7 +23,7 @@ export class StorageManager {
     // We use try/catch because pathExists doesn't always handle broken symlinks well
     try {
       await fs.remove(versionDir);
-    } catch (e) {
+    } catch (_e) {
       // Ignore errors if path doesn't exist
     }
 
@@ -44,7 +44,7 @@ export class StorageManager {
           await fs.remove(targetPath);
         }
         await fs.link(storePath, targetPath);
-      } catch (e) {
+      } catch (_e) {
         // Fallback to copy if hardlink fails (e.g., cross-device)
         await fs.copy(storePath, targetPath);
       }
@@ -61,7 +61,7 @@ export class StorageManager {
    */
   private async updateLatest(libId: string, version: string): Promise<void> {
     const latestPath = path.join(Env.storageDir, libId, 'latest');
-    const versionDir = path.join(Env.storageDir, libId, version);
+    const _versionDir = path.join(Env.storageDir, libId, version);
 
     // Ensure the symlink is relative for portability
     const relativeTarget = version;

@@ -14,10 +14,13 @@ Inspired by pnpm. Built out of necessity.
 git clone https://github.com/elmojones3/diamond.git
 cd diamond
 pnpm install        # installs dependencies and builds
-npm link            # makes `diamond` available globally
+pnpm link --global  # makes `diamond` available globally
 
 # Sync a library's docs
 diamond sync https://mswjs.io/docs --key msw --recursive
+
+# Install as an MCP server (Claude Code, Claude Desktop, Cursor, or Gemini CLI)
+diamond install --claude-code
 
 # Start the MCP server
 diamond serve
@@ -28,15 +31,18 @@ That's it. Your AI assistant now has offline access to MSW's documentation.
 ## How It Works
 
 **1. Crawl with a real browser.**
-Diamond uses Playwright to render pages the same way Chrome does. It waits for JavaScript frameworks to hydrate, then clicks through tab panels and code switchers to capture content that plain scrapers miss.
+Diamond uses Playwright to render pages the same way Chrome does. It waits for JavaScript frameworks to hydrate, then clicks through tab panels and code switchers to capture content that plain scrapers miss. It respects `robots.txt` and identifies as `DiamondCrawler`.
 
 **2. Extract the signal.**
 Mozilla Readability (the Firefox Reader View engine) strips navbars, sidebars, and footers. `dom-to-semantic-markdown` converts the clean HTML to structured Markdown that LLMs read well.
 
-**3. Store without duplication.**
-Content is hashed with SHA-256 and stored once, regardless of how many library versions reference it — the same approach pnpm uses for packages. Versioned directories are hardlinks into this store, so multiple versions cost almost nothing extra.
+**3. Hybrid Search (Keyword + Semantic).**
+Diamond builds two indices for every library: a fast MiniSearch keyword index and a semantic vector index using `all-MiniLM-L6-v2`. This allows your AI to find exact technical terms *and* conceptually related content (e.g. searching for "problems" finds "Error Handling") fully offline.
 
-**4. Serve over MCP.**
+**4. Store without duplication.**
+Content is hashed with SHA-256 and stored once, regardless of how many library versions reference it. Versioned directories are hardlinks into this store, so multiple versions cost almost nothing extra.
+
+**5. Serve over MCP.**
 `diamond serve` exposes everything to any MCP-compatible AI host via tools and resource URIs:
 
 ```
@@ -56,8 +62,17 @@ diamond crawl <url> --key <name> --recursive
 # Start the MCP server
 diamond serve
 
-# Register a local git repository
+# Register a local git repository (immediately indexed and searchable)
 diamond repo add <path> --key <name>
+
+# Watch registered repos and keep their indices up to date as files change
+diamond watch
+
+# Remove a library or repo from the registry (reclaims disk space for docs)
+diamond remove <id>
+
+# Automatic MCP configuration
+diamond install --claude-code --claude-desktop --cursor --gemini-cli
 ```
 
 ## MCP Tools
@@ -68,9 +83,12 @@ Once `diamond serve` is running, your AI assistant has access to:
 |---|---|
 | `list_registry` | List all synced libraries and repos |
 | `sync_docs` | Crawl and sync a library (callable from the AI) |
-| `search_library` | Full-text search across a library's docs |
+| `search_library` | Hybrid search (keyword + semantic) across docs or repos |
+| `remove_library` | Remove a library or repo from the registry |
 
 ## MCP Setup
+
+You can use `diamond install` to automatically configure your tools, or manually edit your configuration files:
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
@@ -108,7 +126,7 @@ Diamond follows the [XDG Base Directory Specification](https://specifications.fr
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 22+
 - pnpm
 - Playwright / Chromium — on first use, run `npx playwright install chromium`
 
