@@ -2,28 +2,28 @@
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-elmojones3-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/elmojones3)
 
-Sync documentation once. Read it offline forever. Give your AI assistant access to up-to-date docs without a network call.
+I got tired of watching an AI agent make fourteen tool calls to resolve a TanStack issue. So I built this.
 
-Diamond is a CLI tool and MCP server that crawls documentation sites, stores them locally using content-addressable storage, and exposes them to AI assistants via the [Model Context Protocol](https://modelcontextprotocol.io/).
+Diamond is a documentation registry and MCP server. It crawls a docs site once, stores the content locally, and serves it to your AI assistant on demand — no network call, no hallucinated APIs, no nonsense.
 
-## The Problem
-
-AI assistants hallucinate API details, miss recent changes, and have no awareness of your private code. Diamond fixes this by giving them a local, searchable copy of the exact docs you're working with — synced once, served instantly.
+Inspired by pnpm. Built out of necessity.
 
 ## Quick Start
 
 ```bash
-# Install
-npm install -g diamond
+git clone https://github.com/elmojones3/diamond.git
+cd diamond
+pnpm install        # installs dependencies and builds
+npm link            # makes `diamond` available globally
 
-# Sync a library's docs (once)
+# Sync a library's docs
 diamond sync https://mswjs.io/docs --key msw --recursive
 
-# Connect to your AI assistant
+# Start the MCP server
 diamond serve
 ```
 
-Then in Claude Desktop, Cursor, or any MCP host, your assistant can search and read MSW's docs directly — no internet required.
+That's it. Your AI assistant now has offline access to MSW's documentation.
 
 ## How It Works
 
@@ -72,8 +72,6 @@ Once `diamond serve` is running, your AI assistant has access to:
 
 ## MCP Setup
 
-Add Diamond to your AI host's MCP configuration:
-
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
@@ -111,7 +109,8 @@ Diamond follows the [XDG Base Directory Specification](https://specifications.fr
 ## Requirements
 
 - Node.js 18+
-- Playwright (installed automatically as a dependency; run `npx playwright install chromium` on first use)
+- pnpm
+- Playwright / Chromium — on first use, run `npx playwright install chromium`
 
 ## Contributing
 
