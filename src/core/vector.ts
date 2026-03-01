@@ -43,7 +43,8 @@ export interface VectorChunk {
 }
 
 export class VectorService {
-  private extractor: Pipeline | null = null;
+  // biome-ignore lint/suspicious/noExplicitAny: Pipeline type from transformers is too restrictive for various pipeline outputs
+  private extractor: any = null;
 
   /**
    * Initialize the embedding pipeline.

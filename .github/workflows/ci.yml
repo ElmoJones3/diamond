@@ -25,7 +25,9 @@ jobs:
         cache: 'pnpm'
 
     - name: Install dependencies
-      run: pnpm install --frozen-lockfile
+      run: |
+        pnpm config set only-allow-trusted-scripts false
+        pnpm install --frozen-lockfile
 
     - name: Lint
       run: pnpm lint
