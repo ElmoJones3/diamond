@@ -1,7 +1,7 @@
 {
   "name": "diamond",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Sync documentation once. Read it offline forever. MCP server for AI assistants.",
   "type": "module",
   "bin": {
     "diamond": "./dist/index.js"
@@ -13,9 +13,17 @@
     "format": "biome format --write .",
     "start": "node dist/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["mcp", "documentation", "crawler", "ai", "llm", "offline", "model-context-protocol"],
+  "author": "sf <sf@jadeiq.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elmojones3/diamond.git"
+  },
+  "homepage": "https://github.com/elmojones3/diamond#readme",
+  "bugs": {
+    "url": "https://github.com/elmojones3/diamond/issues"
+  },
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

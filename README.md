@@ -1,74 +1,80 @@
-# Diamond 💎
+# Diamond
 
-**Documentation & Repository Registry for the Model Context Protocol (MCP)**
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-elmojones3-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/elmojones3)
 
-Diamond is a high-performance documentation crawler and repository manager designed to give AI models real-time, high-signal context. It bridges the gap between an LLM's stale training data and the rapidly evolving software ecosystem.
+Sync documentation once. Read it offline forever. Give your AI assistant access to up-to-date docs without a network call.
 
-## Why Diamond?
+Diamond is a CLI tool and MCP server that crawls documentation sites, stores them locally using content-addressable storage, and exposes them to AI assistants via the [Model Context Protocol](https://modelcontextprotocol.io/).
 
-AI models are only as good as the context they can access. Most current solutions suffer from:
-- **Stale Training Data:** Models don't know about API changes from last week.
-- **Noise:** Standard web scraping includes headers, footers, and ads.
-- **Divergence:** Documentation often hides critical platform-specific details (like npm vs pnpm or JS vs TS) behind tabs that scrapers miss.
+## The Problem
 
-Diamond solves this by providing a "pnpm-inspired" Content-Addressable Storage (CAS) for documentation, coupled with an intelligent crawler that "clicks everything" to reveal hidden content.
+AI assistants hallucinate API details, miss recent changes, and have no awareness of your private code. Diamond fixes this by giving them a local, searchable copy of the exact docs you're working with — synced once, served instantly.
 
-## How it Works
-
-### 1. The Intelligent Crawler
-Diamond uses **Playwright** to navigate modern SPAs. Unlike simple `curl`-based scrapers, it:
-- **Reveals All Content:** Automatically identifies and clicks UI toggles (tabs, dropdowns, code switchers) to ensure both TypeScript and JavaScript examples are captured.
-- **Noise Reduction:** Uses `@mozilla/readability` and `dom-to-semantic-markdown` to transform messy HTML into clean, structured Markdown.
-- **Parallel Workers:** A pool of parallel browsers ensures rapid ingestion of large doc sites.
-
-### 2. CAS-based Storage
-Inspired by `pnpm`, Diamond stores content in `~/.local/share/diamond/store` using SHA-256 hashes.
-- **Deduplication:** Identical Markdown files across different versions of a library are stored only once.
-- **Symbolic Registry:** A central `registry.json` tracks library versions and local repository paths, mapping them to the CAS store.
-
-### 3. MCP Integration
-Diamond exposes everything via an **MCP Server**. AI models can:
-- **Resource Templates:** Access docs via URIs like `docs://{lib}/{version}/{path}`.
-- **Full-Text Search:** Query libraries using an integrated `minisearch` engine.
-- **Symbolic Access:** Read specific files from local repositories tracked by the registry.
-
-## Installation
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-repo/diamond.git
-cd diamond
+# Install
+npm install -g diamond
 
-# Install dependencies
-pnpm install
+# Sync a library's docs (once)
+diamond sync https://mswjs.io/docs --key msw --recursive
 
-# Build the project
-pnpm run build
-
-# Link for global CLI usage
-npm link
+# Connect to your AI assistant
+diamond serve
 ```
 
-## Usage
+Then in Claude Desktop, Cursor, or any MCP host, your assistant can search and read MSW's docs directly — no internet required.
 
-### Ingesting Documentation
+## How It Works
+
+**1. Crawl with a real browser.**
+Diamond uses Playwright to render pages the same way Chrome does. It waits for JavaScript frameworks to hydrate, then clicks through tab panels and code switchers to capture content that plain scrapers miss.
+
+**2. Extract the signal.**
+Mozilla Readability (the Firefox Reader View engine) strips navbars, sidebars, and footers. `dom-to-semantic-markdown` converts the clean HTML to structured Markdown that LLMs read well.
+
+**3. Store without duplication.**
+Content is hashed with SHA-256 and stored once, regardless of how many library versions reference it — the same approach pnpm uses for packages. Versioned directories are hardlinks into this store, so multiple versions cost almost nothing extra.
+
+**4. Serve over MCP.**
+`diamond serve` exposes everything to any MCP-compatible AI host via tools and resource URIs:
+
+```
+docs://msw/latest/api/handlers     ← read a specific page
+repo://my-library/src/index.ts     ← read a file from a local repo
+```
+
+## CLI
+
 ```bash
-# Crawl a documentation site
-diamond crawl https://sdk.vercel.ai/docs --name ai-sdk
+# Sync docs into the registry (use this for MCP access)
+diamond sync <url> --key <name> --recursive
 
-# Ingest a specific version
-diamond crawl https://lexical.dev/docs/intro --name lexical --ver 0.17.0
+# One-shot crawl to a local directory (no registry)
+diamond crawl <url> --key <name> --recursive
+
+# Start the MCP server
+diamond serve
+
+# Register a local git repository
+diamond repo add <path> --key <name>
 ```
 
-### Managing Local Repos
-```bash
-# Add a local repository to the registry
-diamond repo add ~/work/my-project --name my-project
-```
+## MCP Tools
 
-### Running the MCP Server
-Add the following to your `claude_desktop_config.json`:
+Once `diamond serve` is running, your AI assistant has access to:
 
+| Tool | What it does |
+|---|---|
+| `list_registry` | List all synced libraries and repos |
+| `sync_docs` | Crawl and sync a library (callable from the AI) |
+| `search_library` | Full-text search across a library's docs |
+
+## MCP Setup
+
+Add Diamond to your AI host's MCP configuration:
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -80,10 +86,37 @@ Add the following to your `claude_desktop_config.json`:
 }
 ```
 
-## Tech Stack
-- **Runtime:** Node.js (ESM)
-- **Crawler:** Playwright
-- **Transformation:** @mozilla/readability, dom-to-semantic-markdown
-- **Search:** MiniSearch
-- **Storage:** Content-Addressable Storage (SHA-256)
-- **CLI:** Commander.js
+**Cursor** (`.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "diamond": {
+      "command": "diamond",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+## Storage Layout
+
+Diamond follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/). Override any path with the standard XDG environment variables.
+
+```
+~/.config/diamond/registry.json    ← manifest of all synced libraries
+~/.local/share/diamond/store/      ← content-addressable store (SHA-256)
+~/.local/share/diamond/storage/    ← versioned views (hardlinked from store)
+```
+
+## Requirements
+
+- Node.js 18+
+- Playwright (installed automatically as a dependency; run `npx playwright install chromium` on first use)
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+
+## License
+
+[MIT](LICENSE)

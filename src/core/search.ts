@@ -1,26 +1,69 @@
+/**
+ * SearchService — full-text search over stored documentation.
+ *
+ * Diamond uses MiniSearch (https://lucaong.github.io/minisearch/) as its
+ * search engine. MiniSearch is an in-process, zero-dependency library that
+ * builds an inverted index in memory and supports:
+ *
+ *   • Prefix matching  — "hand" matches "handlers", "handleRequest", etc.
+ *   • Fuzzy matching   — tolerates typos (configurable edit distance).
+ *   • Field boosting   — title matches score higher than body matches.
+ *
+ * Why not a database or an external search service?
+ *   Diamond's core design principle is "offline by default". Once docs are
+ *   synced, everything — storage and search — should work without a network
+ *   connection. MiniSearch fits perfectly: it's fast, tiny, and the index
+ *   serializes to a plain JSON file that lives alongside the Markdown content.
+ *
+ * Index lifecycle:
+ *   1. `indexVersion()` is called once after a sync completes. It builds the
+ *      index from all crawled pages and writes it to disk as JSON.
+ *   2. `search()` is called at query time. It deserializes the JSON index
+ *      back into a MiniSearch instance and runs the query.
+ *
+ * Index location:
+ *   `$STORAGE_DIR/{libId}/{version}/search-index.json`
+ *   e.g. `~/.local/share/diamond/storage/msw/2.12.10/search-index.json`
+ */
+
 import path from 'node:path';
 import fs from 'fs-extra';
 import MiniSearch from 'minisearch';
 import { Env } from './env.js';
 
+/** The shape of a document as it enters the search index. */
 export interface SearchDoc {
-  id: string; // The relative path (e.g., api/editors.md)
+  /** The relative file path, used as the document's unique ID (e.g. "api/handlers"). */
+  id: string;
+  /** The page title — weighted more heavily in search results. */
   title: string;
+  /** The full Markdown content of the page — indexed but not stored in results. */
   content: string;
+  /** The original URL of the page — stored so it can be returned with results. */
   url: string;
 }
 
-/**
- * Manages per-library search indices using MiniSearch.
- */
 export class SearchService {
   /**
-   * Builds and persists a search index for a specific library version.
+   * Build a search index for a library version and persist it to disk.
+   *
+   * This runs once per sync. The index is serialized to JSON and stored
+   * alongside the Markdown files so it survives across process restarts.
+   *
+   * MiniSearch configuration:
+   *   - `fields`       — which document fields to tokenize and index.
+   *   - `storeFields`  — which fields to include in search results (these
+   *                      are stored verbatim, not indexed for search).
+   *   - `idField`      — the unique document identifier.
+   *
+   * @param libId   The library identifier (e.g. "msw").
+   * @param version The version being indexed (e.g. "2.12.10").
+   * @param docs    The array of documents to index.
    */
   async indexVersion(libId: string, version: string, docs: SearchDoc[]): Promise<void> {
     const miniSearch = new MiniSearch({
-      fields: ['title', 'content'], // Fields to index for full-text search
-      storeFields: ['title', 'url'], // Fields to return with search results
+      fields: ['title', 'content'],
+      storeFields: ['title', 'url'],
       idField: 'id',
     });
 
@@ -31,7 +74,23 @@ export class SearchService {
   }
 
   /**
-   * Searches a library's index and returns results.
+   * Search a library's index and return ranked results.
+   *
+   * Deserializes the persisted JSON index and runs the query with:
+   *   - Prefix matching (`prefix: true`) — so partial words like "hand" match
+   *     "handlers" without the user typing the full term.
+   *   - Fuzzy matching (`fuzzy: 0.2`) — allows up to 20% edit distance, so a
+   *     single typo like "hanlers" still finds "handlers".
+   *   - Title boost (`boost: { title: 2 }`) — pages whose title matches the
+   *     query score twice as high as pages where only the body matches.
+   *
+   * Returns an empty array if no index exists for the requested version
+   * (i.e. the library hasn't been synced yet) rather than throwing.
+   *
+   * @param libId   The library identifier to search.
+   * @param version The version to search (use "latest" for the current version).
+   * @param query   The search query string.
+   * @returns       An array of MiniSearch result objects, ordered by relevance score.
    */
   async search(libId: string, version: string, query: string): Promise<any[]> {
     const indexPath = path.join(Env.storageDir, libId, version, 'search-index.json');
@@ -40,6 +99,7 @@ export class SearchService {
       return [];
     }
 
+    // MiniSearch.loadJSON requires a string, not a parsed object — convert back.
     const indexData = await fs.readJson(indexPath);
     const miniSearch = MiniSearch.loadJSON(JSON.stringify(indexData), {
       fields: ['title', 'content'],

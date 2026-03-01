@@ -1,51 +1,41 @@
-# Roadmap: Execution Phases
+# Roadmap
 
-From a Research & Strategy phase to a production-ready MCP Doc Registry.
+## Phase 1: Registry Core ✅
+- [x] Define the `registry.json` schema (Zod-validated discriminated union)
+- [x] Content-Addressable Store with SHA256 hashing and atomic writes
+- [x] Storage Manager: versioned directories via hardlinks + `latest` symlink
+- [x] Registry Manager: in-memory Map backed by `registry.json`
 
-## Phase 1: Registry Core (The Storage Layer)
-**Goal:** Build the CAS-based storage system that allows multiple versions to coexist efficiently.
+## Phase 2: Crawler Service ✅
+- [x] Headless Chromium via Playwright with `networkidle` wait strategy
+- [x] Readability.js for noise removal (navbars, sidebars, footers)
+- [x] dom-to-semantic-markdown for LLM-friendly Markdown output
+- [x] Sitemap discovery (sitemap.xml, sitemap_index.xml, robots.txt)
+- [x] Recursive link-following with same-origin/scope-prefix filtering
+- [x] Tab panel revealing for Docusaurus / Starlight content
+- [x] Parallel worker loop (configurable concurrency)
+- [x] Version detection from URL patterns and HTML meta tags
 
-- [ ] Define the `registry.json` and `index.json` schemas.
-- [ ] Implement the **Content-Addressable Store (CAS)** (hashing content -> `$DATA_DIR/store/{sha256}`).
-- [ ] Implement the **Storage Manager** (creating hardlinks/symlinks for versioned pages).
-- [ ] Implement the **Registry Manifest** (tracking synced libraries and versions).
+## Phase 3: MCP Interface ✅
+- [x] MCP server (stdio transport) using the TypeScript SDK
+- [x] `sync_docs` tool — trigger a full sync from the AI
+- [x] `search_library` tool — keyword search via MiniSearch
+- [x] `list_registry` tool — enumerate synced libraries and repos
+- [x] `docs://{lib}/{version}/{+path}` resource — serve Markdown pages
+- [x] `repo://{repo}/{+path}` resource — serve local repo files
 
-## Phase 2: Crawler Service (The Ingestion Layer)
-**Goal:** Build the "Readability Combo" crawler that transforms HTML into high-signal Markdown.
+## Phase 4: CLI & DX ✅
+- [x] `diamond sync` — sync docs into the global registry
+- [x] `diamond crawl` — one-shot crawl to a local directory
+- [x] `diamond serve` — launch the MCP server
+- [x] `diamond repo add` — register a local git repository
+- [x] XDG-compliant filesystem paths (data, config, cache)
+- [x] MiniSearch index built and persisted at sync time
 
-- [ ] Setup **Playwright** with a headless browser configuration.
-- [ ] Integrate **Readability.js** for noise-removal (pruning navbars, footers, etc.).
-- [ ] Integrate **dom-to-semantic-markdown** for high-quality LLM-ready conversion.
-- [ ] Implement **Sitemap Discovery** and **Recursive Scoping** logic.
-- [ ] Implement **Sync Idempotency** (checking for updates via hashes or last-modified headers).
-
-## Phase 3: MCP Interface (The Connector Layer)
-**Goal:** Expose the Registry and Crawler to any AI Host (Claude, Gemini, etc.).
-
-- [ ] Implement the **MCP Server** using the TypeScript SDK.
-- [ ] Define and implement the **Tools**:
-    - `sync_docs(lib, url, config?)`
-    - `list_synced_libs()`
-    - `search_library(lib, query)` (if embedded search index found).
-- [ ] Define and implement the **Resources**:
-    - `docs://{lib}/{version}/{path}`
-    - `docs://{lib}/latest/{path}`
-- [ ] Define and implement the **Prompts**:
-    - `library-expert(lib)` (Context injection).
-
-## Phase 4: Distribution & DX
-**Goal:** Make it easy for anyone to use and contribute.
-
-- [ ] Create a CLI for direct usage (`mcp-docs sync msw`).
-- [ ] Add support for **Discovery Tools** (NPM, Go, PyPI) to automatically find doc URLs.
-- [ ] Finalize the global configuration (XDG compliance).
-- [ ] Documentation for contributing new "Discovery" strategies.
-
----
-
-### Current Status: Ready to start Phase 1.
-- Research & Strategy: **Completed**
-- Registry Spec: **Defined**
-- Crawler Strategy: **Selected**
-- Tech Stack: **Approved**
-- Implementation: **Pending**
+## Up Next
+- [ ] `diamond repo sync` — `git pull` tracked repositories
+- [ ] NPM/PyPI/Go discovery: auto-find docs URL from package name
+- [ ] SSE transport for remote/multi-machine use
+- [ ] `diamond sync --check` — re-sync only if upstream version changed
+- [ ] `diamond rm` — remove a library from the registry and reclaim disk space
+- [ ] Prompts: `library-expert(lib)` for context injection

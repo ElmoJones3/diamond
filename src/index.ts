@@ -1,6 +1,34 @@
 #!/usr/bin/env node
 
+/**
+ * Diamond CLI — entry point.
+ *
+ * Diamond has two personalities:
+ *
+ *   As a CLI tool:  `diamond <command> [options]`
+ *     • crawl  — one-shot crawl, dumps Markdown files to a local directory.
+ *     • sync   — crawl + store in the global registry (CAS, search index).
+ *     • serve  — start the MCP server for AI assistant integration.
+ *     • repo   — manage local git repositories in the registry.
+ *
+ *   As an MCP server:  `diamond serve`
+ *     The serve command launches the Diamond MCP server over stdio, making
+ *     all of Diamond's capabilities available to any MCP-compatible AI host
+ *     (Claude Desktop, Cursor, etc.) without the user needing to run any
+ *     other commands.
+ *
+ * All commands are thin wrappers — they parse arguments and delegate to the
+ * implementation in `src/cli/` or `src/mcp/`. The actual logic lives there.
+ *
+ * Note on console.warn vs console.log:
+ *   When running as an MCP server, stdout is the JSON-RPC transport channel.
+ *   Writing anything else to stdout will corrupt the protocol stream. All
+ *   human-readable output (progress, errors) therefore goes to stderr via
+ *   `console.warn` / `console.error`, which is safe in both CLI and MCP mode.
+ */
+
 import { Command } from 'commander';
+
 import { crawlCommand } from './cli/crawl.js';
 import { addRepoCommand } from './cli/repo.js';
 import { syncCommand } from './cli/sync.js';
@@ -8,18 +36,24 @@ import { McpServer } from './mcp/server.js';
 
 const program = new Command();
 
-program.name('diamond').description('Documentation Registry and Crawler for MCP').version('1.0.0');
+program
+  .name('diamond')
+  .description('Documentation registry and MCP server — sync docs once, read them offline forever.')
+  .version('1.0.0');
 
+// -----------------------------------------------------------------------------
+// crawl — one-shot crawl without touching the global registry
+// -----------------------------------------------------------------------------
 program
   .command('crawl')
-  .description('Crawl a documentation site and drop Markdown files locally')
-  .argument('<url>', 'The base URL to crawl')
-  .option('--key <name>', 'The identifier for this library', 'docs')
-  .option('--recursive', 'Whether to follow internal links', false)
-  .option('--depth <number>', 'Maximum depth for recursive crawling', '2')
-  .option('--concurrency <number>', 'Number of simultaneous pages to crawl', '5')
-  .option('--limit <number>', 'Limit the number of pages to crawl')
-  .argument('[outDir]', 'The output directory', '.')
+  .description('Crawl a documentation site and write Markdown files to a local directory')
+  .argument('<url>', 'The root URL to start crawling from')
+  .argument('[outDir]', 'Output directory (default: current directory)', '.')
+  .option('--key <name>', 'Subdirectory name for the output (e.g. "msw")', 'docs')
+  .option('--recursive', 'Follow internal links to crawl sub-pages', false)
+  .option('--depth <number>', 'Maximum link-follow depth (not yet enforced)', '2')
+  .option('--concurrency <number>', 'Pages to process simultaneously', '5')
+  .option('--limit <number>', 'Stop after this many pages (useful for testing)')
   .action(async (url, outDir, options) => {
     try {
       await crawlCommand(url, {
@@ -36,15 +70,18 @@ program
     }
   });
 
+// -----------------------------------------------------------------------------
+// sync — crawl + ingest into the global registry (CAS, search index, manifest)
+// -----------------------------------------------------------------------------
 program
   .command('sync')
-  .description('Sync a documentation site to the global registry (Deduplicated)')
-  .argument('<url>', 'The base URL to crawl')
-  .option('--key <name>', 'The identifier for this library', 'docs')
-  .option('--ver <string>', 'The version of the documentation', 'latest')
-  .option('--recursive', 'Whether to follow internal links', false)
-  .option('--concurrency <number>', 'Number of simultaneous pages to crawl', '5')
-  .option('--limit <number>', 'Limit the number of pages to crawl')
+  .description('Crawl a documentation site and store it in Diamond\'s global registry')
+  .argument('<url>', 'The root URL to start crawling from')
+  .option('--key <name>', 'Library identifier in the registry (e.g. "msw")', 'docs')
+  .option('--ver <string>', 'Pin a specific version (default: auto-detect)', 'latest')
+  .option('--recursive', 'Follow internal links to crawl sub-pages', false)
+  .option('--concurrency <number>', 'Pages to process simultaneously', '5')
+  .option('--limit <number>', 'Stop after this many pages')
   .action(async (url, options) => {
     console.warn(`Entering sync command for ${url}...`);
     try {
@@ -61,9 +98,12 @@ program
     }
   });
 
+// -----------------------------------------------------------------------------
+// serve — launch the MCP server over stdio
+// -----------------------------------------------------------------------------
 program
   .command('serve')
-  .description('Start the Diamond MCP server on stdio')
+  .description('Start the Diamond MCP server (connect via Claude Desktop, Cursor, etc.)')
   .action(async () => {
     try {
       const server = new McpServer();
@@ -74,16 +114,21 @@ program
     }
   });
 
-const repo = program.command('repo').description('Manage local repositories in the registry');
+// -----------------------------------------------------------------------------
+// repo — manage local git repositories
+// -----------------------------------------------------------------------------
+const repo = program
+  .command('repo')
+  .description('Manage local git repositories tracked by Diamond');
 
 repo
   .command('add')
-  .description('Track a local git repository')
-  .argument('<path>', 'The local path to the repository')
-  .option('--key <name>', 'The identifier for this repository')
-  .action(async (path, options) => {
+  .description('Register a local git repository so Diamond can serve its files over MCP')
+  .argument('<path>', 'Path to the repository root (relative or absolute)')
+  .option('--key <name>', 'Registry identifier (defaults to the directory name)')
+  .action(async (repoPath, options) => {
     try {
-      await addRepoCommand(path, options);
+      await addRepoCommand(repoPath, options);
     } catch (e) {
       console.error('Fatal error adding repo:', e);
       process.exit(1);
