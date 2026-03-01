@@ -30,10 +30,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import fs from 'fs-extra';
 import * as z from 'zod';
 
-import { syncCommand } from '../cli/sync.js';
-import { RegistryManager } from '../core/registry.js';
-import { SearchService } from '../core/search.js';
-import { StorageManager } from '../core/storage.js';
+import { syncCommand } from '#src/cli/sync.js';
+import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
+import { type DiamondSearchResult, SearchService } from '#src/core/search.js';
+import { StorageManager } from '#src/core/storage.js';
 
 export class McpServer {
   private mcp: SdkMcpServer;
@@ -253,7 +253,7 @@ export class McpServer {
       'search_library',
       {
         description:
-          'Full-text search across a library\'s stored documentation. ' +
+          "Full-text search across a library's stored documentation. " +
           'Returns matching page titles and their `docs://` URIs ranked by relevance. ' +
           'Use this to discover which pages to read before fetching full content.',
         inputSchema: {
@@ -303,7 +303,7 @@ export class McpServer {
       {
         description:
           'List all libraries and repositories tracked by Diamond. ' +
-          'Call this first to see what\'s available before searching or reading docs.',
+          "Call this first to see what's available before searching or reading docs.",
       },
       async () => {
         await this.registry.init();

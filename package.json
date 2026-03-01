@@ -12,11 +12,23 @@
     "watch": "tsc -w",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "test": "vitest run",
     "start": "node dist/index.js"
   },
-  "keywords": ["mcp", "documentation", "crawler", "ai", "llm", "offline", "model-context-protocol"],
+  "keywords": [
+    "mcp",
+    "documentation",
+    "crawler",
+    "ai",
+    "llm",
+    "offline",
+    "model-context-protocol"
+  ],
   "author": "sf <sf@jadeiq.com>",
   "license": "MIT",
+  "imports": {
+    "#src/*": "./src/*.js"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/elmojones3/diamond.git"
@@ -44,6 +56,7 @@
     "@types/jsdom": "^28.0.0",
     "@types/mozilla-readability": "^0.2.1",
     "@types/node": "^25.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

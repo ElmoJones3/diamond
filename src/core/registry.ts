@@ -23,7 +23,7 @@
 
 import fs from 'fs-extra';
 import { z } from 'zod';
-import { Env } from './env.js';
+import { Env } from '#src/core/env.js';
 
 // ---------------------------------------------------------------------------
 // Schema

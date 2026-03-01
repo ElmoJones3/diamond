@@ -34,37 +34,37 @@
 import os from 'node:os';
 import path from 'node:path';
 
-export class Env {
+export const Env = {
   /**
    * Root for large persistent data (the CAS store and versioned storage).
    * Defaults to `~/.local/share/diamond`.
    */
-  static get dataDir() {
+  get dataDir() {
     return process.env.XDG_DATA_HOME
       ? path.join(process.env.XDG_DATA_HOME, 'diamond')
       : path.join(os.homedir(), '.local', 'share', 'diamond');
-  }
+  },
 
   /**
    * Root for configuration files (the registry manifest).
    * Defaults to `~/.config/diamond`.
    */
-  static get configDir() {
+  get configDir() {
     return process.env.XDG_CONFIG_HOME
       ? path.join(process.env.XDG_CONFIG_HOME, 'diamond')
       : path.join(os.homedir(), '.config', 'diamond');
-  }
+  },
 
   /**
    * Root for ephemeral / re-generatable files (temp files during atomic writes).
    * Defaults to `~/.cache/diamond`.
    * Safe to delete without data loss — Diamond will recreate what it needs.
    */
-  static get cacheDir() {
+  get cacheDir() {
     return process.env.XDG_CACHE_HOME
       ? path.join(process.env.XDG_CACHE_HOME, 'diamond')
       : path.join(os.homedir(), '.cache', 'diamond');
-  }
+  },
 
   /**
    * The content-addressable store directory.
@@ -76,9 +76,9 @@ export class Env {
    *
    * Example path: `~/.local/share/diamond/store/ab/abcdef1234...`
    */
-  static get storeDir() {
-    return path.join(Env.dataDir, 'store');
-  }
+  get storeDir() {
+    return path.join(this.dataDir, 'store');
+  },
 
   /**
    * The versioned storage directory.
@@ -90,9 +90,9 @@ export class Env {
    *
    * Example path: `~/.local/share/diamond/storage/msw/2.12.10/api/handlers.md`
    */
-  static get storageDir() {
-    return path.join(Env.dataDir, 'storage');
-  }
+  get storageDir() {
+    return path.join(this.dataDir, 'storage');
+  },
 
   /**
    * The path to the registry manifest JSON file.
@@ -103,7 +103,7 @@ export class Env {
    *
    * Example path: `~/.config/diamond/registry.json`
    */
-  static get registryPath() {
-    return path.join(Env.configDir, 'registry.json');
-  }
-}
+  get registryPath() {
+    return path.join(this.configDir, 'registry.json');
+  },
+} as const;

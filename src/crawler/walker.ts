@@ -59,7 +59,7 @@ export class WalkerService {
       const parts = scopePrefix.split('/');
       if (parts.length > 1) {
         parts.pop();
-        scopePrefix = parts.join('/') + '/';
+        scopePrefix = `${parts.join('/')}/`;
       }
     }
 
@@ -86,7 +86,7 @@ export class WalkerService {
             uniqueUrls.add(normalized);
           }
         }
-      } catch (e) {
+      } catch (_e) {
         // `new URL()` throws on invalid hrefs (mailto:, javascript:, etc.) — skip them
       }
     }

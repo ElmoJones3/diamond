@@ -62,7 +62,7 @@ export class DiscoveryService {
           if (match[1]) sitemapUrls.add(match[1].trim());
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // robots.txt is optional — many sites don't have one
     }
 
@@ -72,7 +72,7 @@ export class DiscoveryService {
       try {
         const urls = await this.parseSitemap(sitemapUrl);
         discoveredUrls.push(...urls);
-      } catch (e) {
+      } catch (_e) {
         // This sitemap didn't work — move on to the next candidate
       }
     }
@@ -83,20 +83,6 @@ export class DiscoveryService {
 
   /**
    * Fetch and parse a single sitemap XML file.
-   *
-   * Handles two sitemap formats defined by the sitemaps.org spec:
-   *
-   *   • `<urlset>` — a standard sitemap containing `<url><loc>` entries.
-   *     This is the most common format.
-   *
-   *   • `<sitemapindex>` — an index file that lists other sitemap files
-   *     rather than pages directly. Large sites split their sitemap across
-   *     multiple files and use an index to reference them. We recurse into
-   *     each child sitemap to collect all URLs.
-   *
-   * Note: both `<sitemap>` and `<url>` can appear as a single object or as an
-   * array depending on how many entries the sitemap contains. fast-xml-parser
-   * doesn't normalize this, so we coerce to an array explicitly.
    */
   private async parseSitemap(url: string): Promise<string[]> {
     const resp = await fetch(url);
@@ -105,10 +91,17 @@ export class DiscoveryService {
     const text = await resp.text();
     const data = this.parser.parse(text);
 
+    return this.parseSitemapData(data);
+  }
+
+  /**
+   * Parse sitemap data (from XML) into a flat array of URLs.
+   * Handles both <urlset> and <sitemapindex> formats.
+   */
+  private async parseSitemapData(data: any): Promise<string[]> {
     const urls: string[] = [];
 
-    if (data.sitemapindex && data.sitemapindex.sitemap) {
-      // Sitemap index — each `<sitemap>` entry points to another sitemap file.
+    if (data.sitemapindex?.sitemap) {
       const sitemaps = Array.isArray(data.sitemapindex.sitemap)
         ? data.sitemapindex.sitemap
         : [data.sitemapindex.sitemap];
@@ -119,8 +112,7 @@ export class DiscoveryService {
           urls.push(...nested);
         }
       }
-    } else if (data.urlset && data.urlset.url) {
-      // Standard sitemap — each `<url>` entry has a `<loc>` with the page URL.
+    } else if (data.urlset?.url) {
       const entries = Array.isArray(data.urlset.url) ? data.urlset.url : [data.urlset.url];
 
       for (const entry of entries) {

@@ -24,7 +24,7 @@
 
 import path from 'node:path';
 import fs from 'fs-extra';
-import { CrawlerService } from '../crawler/crawler.js';
+import { CrawlerService } from '#src/crawler/crawler.js';
 
 export interface CrawlCommandOptions {
   /** Short name for the library, used as the output subdirectory name. */

@@ -39,7 +39,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import fs from 'fs-extra';
-import { Env } from './env.js';
+import { Env } from '#src/core/env.js';
 
 export class CasStore {
   /**

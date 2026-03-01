@@ -29,7 +29,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import MiniSearch from 'minisearch';
-import { Env } from './env.js';
+import { Env } from '#src/core/env.js';
 
 /** The shape of a document as it enters the search index. */
 export interface SearchDoc {
@@ -41,6 +41,16 @@ export interface SearchDoc {
   content: string;
   /** The original URL of the page — stored so it can be returned with results. */
   url: string;
+}
+
+/** The shape of a search result. */
+export interface DiamondSearchResult {
+  id: string;
+  title: string;
+  url: string;
+  score: number;
+  match: Record<string, string[]>;
+  terms: string[];
 }
 
 export class SearchService {
@@ -67,9 +77,15 @@ export class SearchService {
       idField: 'id',
     });
 
-    miniSearch.addAll(docs);
+    // Deduplicate by ID before indexing. Duplicate paths can occur when a
+    // sitemap and link-following both discover the same page under slightly
+    // different URLs (e.g. with/without trailing slash). Last write wins.
+    const seen = new Map<string, SearchDoc>();
+    for (const doc of docs) seen.set(doc.id, doc);
+    miniSearch.addAll(Array.from(seen.values()));
 
     const indexPath = path.join(Env.storageDir, libId, version, 'search-index.json');
+    await fs.ensureDir(path.dirname(indexPath));
     await fs.writeJson(indexPath, miniSearch.toJSON());
   }
 
@@ -92,7 +108,7 @@ export class SearchService {
    * @param query   The search query string.
    * @returns       An array of MiniSearch result objects, ordered by relevance score.
    */
-  async search(libId: string, version: string, query: string): Promise<any[]> {
+  async search(libId: string, version: string, query: string): Promise<DiamondSearchResult[]> {
     const indexPath = path.join(Env.storageDir, libId, version, 'search-index.json');
 
     if (!(await fs.pathExists(indexPath))) {
@@ -111,6 +127,6 @@ export class SearchService {
       prefix: true,
       fuzzy: 0.2,
       boost: { title: 2 },
-    });
+    }) as unknown as DiamondSearchResult[];
   }
 }

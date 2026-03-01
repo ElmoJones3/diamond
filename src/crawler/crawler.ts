@@ -21,10 +21,10 @@
  *     → CrawlResult[]
  */
 
-import { TransformerService } from '../transformer/html-to-markdown.js';
-import { BrowserService } from './browser.js';
-import { DiscoveryService } from './discovery.js';
-import { WalkerService } from './walker.js';
+import { TransformerService } from '#src/transformer/html-to-markdown.js';
+import { BrowserService } from '#src/crawler/browser.js';
+import { DiscoveryService } from '#src/crawler/discovery.js';
+import { WalkerService } from '#src/crawler/walker.js';
 
 /** Options for a single crawl run. */
 export interface CrawlOptions {
@@ -108,7 +108,7 @@ export class CrawlerService {
         const parts = scopePrefix.split('/');
         if (parts.length > 1) {
           parts.pop();
-          scopePrefix = parts.join('/') + '/';
+          scopePrefix = `${parts.join('/')}/`;
         }
       }
 
@@ -116,9 +116,13 @@ export class CrawlerService {
         try {
           const discovered = new URL(u);
           if (discovered.origin === root.origin && discovered.pathname.startsWith(scopePrefix)) {
-            if (!visited.has(u)) queue.push(u);
+            // Normalize before the visited check — sitemaps often list both
+            // "https://example.com/docs/" and "https://example.com/docs" which
+            // would otherwise crawl the same page twice and produce duplicate paths.
+            const normalized = discovered.origin + discovered.pathname.replace(/\/$/, '');
+            if (!visited.has(normalized)) queue.push(normalized);
           }
-        } catch (e) {
+        } catch (_e) {
           // Skip malformed URLs in the sitemap
         }
       }

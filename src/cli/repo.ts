@@ -24,7 +24,7 @@
 
 import path from 'node:path';
 import fs from 'fs-extra';
-import { RegistryManager } from '../core/registry.js';
+import { RegistryManager } from '#src/core/registry.js';
 
 /**
  * Register a local git repository in Diamond's registry.

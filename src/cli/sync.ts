@@ -23,11 +23,11 @@
  * `sync_docs` MCP tool — the MCP server and CLI share the same implementation.
  */
 
-import { type RegistryEntry, RegistryManager } from '../core/registry.js';
-import { SearchService } from '../core/search.js';
-import { StorageManager } from '../core/storage.js';
-import { CrawlerService } from '../crawler/crawler.js';
-import { DiscoveryService } from '../crawler/discovery.js';
+import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
+import { type DiamondSearchResult, SearchService } from '#src/core/search.js';
+import { StorageManager } from '#src/core/storage.js';
+import { CrawlerService } from '#src/crawler/crawler.js';
+import { DiscoveryService } from '#src/crawler/discovery.js';
 
 export interface SyncCommandOptions {
   /** The short identifier for this library, e.g. "msw" or "zod". */

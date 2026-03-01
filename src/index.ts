@@ -29,10 +29,11 @@
 
 import { Command } from 'commander';
 
-import { crawlCommand } from './cli/crawl.js';
-import { addRepoCommand } from './cli/repo.js';
-import { syncCommand } from './cli/sync.js';
-import { McpServer } from './mcp/server.js';
+import { crawlCommand } from '#src/cli/crawl.js';
+import { installCommand } from '#src/cli/install.js';
+import { addRepoCommand } from '#src/cli/repo.js';
+import { syncCommand } from '#src/cli/sync.js';
+import { McpServer } from '#src/mcp/server.js';
 
 const program = new Command();
 
@@ -75,7 +76,7 @@ program
 // -----------------------------------------------------------------------------
 program
   .command('sync')
-  .description('Crawl a documentation site and store it in Diamond\'s global registry')
+  .description("Crawl a documentation site and store it in Diamond's global registry")
   .argument('<url>', 'The root URL to start crawling from')
   .option('--key <name>', 'Library identifier in the registry (e.g. "msw")', 'docs')
   .option('--ver <string>', 'Pin a specific version (default: auto-detect)', 'latest')
@@ -115,11 +116,41 @@ program
   });
 
 // -----------------------------------------------------------------------------
+// install — register Diamond as an MCP server in AI coding tools
+// -----------------------------------------------------------------------------
+program
+  .command('install')
+  .description('Register Diamond as an MCP server in AI coding tools')
+  .option('--claude-code', 'Install into Claude Code (~/.claude.json)')
+  .option('--claude-desktop', 'Install into Claude Desktop')
+  .option('--cursor', 'Install into Cursor (~/.cursor/mcp.json)')
+  .action(async (options) => {
+    const targets: string[] = [];
+    if (options.claudeCode) targets.push('claude-code');
+    if (options.claudeDesktop) targets.push('claude-desktop');
+    if (options.cursor) targets.push('cursor');
+
+    if (targets.length === 0) {
+      console.warn('Specify one or more targets:\n');
+      console.warn('  diamond install --claude-code');
+      console.warn('  diamond install --claude-desktop');
+      console.warn('  diamond install --cursor');
+      console.warn('\nFlags can be combined: diamond install --claude-code --cursor');
+      process.exit(0);
+    }
+
+    try {
+      await installCommand({ targets });
+    } catch (e) {
+      console.error('Fatal error during install:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
 // repo — manage local git repositories
 // -----------------------------------------------------------------------------
-const repo = program
-  .command('repo')
-  .description('Manage local git repositories tracked by Diamond');
+const repo = program.command('repo').description('Manage local git repositories tracked by Diamond');
 
 repo
   .command('add')
