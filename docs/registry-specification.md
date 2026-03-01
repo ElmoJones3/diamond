@@ -3,11 +3,13 @@
 This document defines how the Global Documentation Registry tracks, manages, and synchronizes library documentation across multiple versions and ecosystems.
 
 ## 1. Registry Entry Schema
-Each entry in the registry represents a library and its collection of synced versions.
+Each entry in the registry represents either a documentation library (crawled) or a local repository (indexed).
 
+### A. Documentation Type (`type: "docs"`)
 ```json
 {
   "id": "msw",
+  "type": "docs",
   "name": "Mock Service Worker",
   "homepage": "https://mswjs.io/",
   "config": {
@@ -17,10 +19,6 @@ Each entry in the registry represents a library and its collection of synced ver
     "freshness": "1d"
   },
   "versions": {
-    "1.3.2": {
-      "path": "storage/msw/1.3.2",
-      "syncedAt": "2023-11-10T10:00:00Z"
-    },
     "2.12.10": {
       "path": "storage/msw/2.12.10",
       "syncedAt": "2024-05-20T10:00:00Z"
@@ -29,47 +27,41 @@ Each entry in the registry represents a library and its collection of synced ver
 }
 ```
 
-## 2. Sync Variants & Discovery
-
-The `sync_docs` tool handles the core logic, but we also expose **Discovery Tools** to help the model decide on a strategy.
-
-### A. Discovery Tools
-- **`check_npm_version(package: string)`**: Returns the latest version and documentation URL from the NPM registry.
-- **`check_go_version(module: string)`**: Returns the latest version and documentation URL for a Go module.
-- **`check_pypi_version(package: string)`**: (Future) Returns latest Python package info.
-
-### B. Sync Strategies
-1. **Registry-Based (`registry`)**
-   - **Logic:** Uses Discovery Tools to check if a newer version exists in the ecosystem.
-   - **Action:** If `latestVersion > currentLocalVersion`, trigger a sync for the new version.
-2. **Time-Based (`time`)**
-   - **Logic:** Fallback for docs without a package registry. Compares `syncedAt` with current time.
-   - **Action:** Re-crawl the URL if the threshold (e.g., 7 days) is exceeded.
-
-## 3. Storage Hierarchy (XDG Compliant & CAS-Based)
-We follow XDG standards for local storage. To ensure extreme efficiency, we use a **Content-Addressable Store (CAS)** and **Hardlinks**, similar to `pnpm`.
-
-- **Data/Docs Base:** `~/.local/share/mcp-docs/` (referred to as `$DATA_DIR`)
-- **Config:** `~/.config/mcp-docs/registry.json`
-- **Cache:** `~/.cache/mcp-docs/`
-
-```text
-$DATA_DIR/
-├── store/                 # Global Content-Addressable Store (CAS)
-│   └── {sha256}/          # Files indexed by content hash
-└── storage/               # The "Project" view (Hardlinked/Symlinked)
-    └── {lib-id}/
-        ├── {version}/     # Collection of HARDLINKS to store/
-        │   ├── index.json # Page manifest (titles, paths, hashes)
-        │   └── pages/     # The actual .md files (hardlinked)
-        └── latest/        # SYMLINK to the highest version
+### B. Repository Type (`type: "repo"`)
+```json
+{
+  "id": "diamond-core",
+  "type": "repo",
+  "name": "Diamond Core",
+  "localPath": "/Users/sf/work/diamond",
+  "config": {
+    "syncStrategy": "git",
+    "branch": "main",
+    "autoPull": true
+  },
+  "syncedAt": "2024-05-20T10:00:00Z"
+}
 ```
 
-## 4. Resource Addressing
-Resources are exposed to the AI using a version-aware URI scheme:
+## 2. Sync Variants & Discovery
 
-- **`docs://{lib}/{version}/{path}`** (e.g., `docs://msw/2.12.10/api/setup`)
-- **`docs://{lib}/latest/{path}`** (Convenience alias via symlink)
+### A. Discovery Tools
+- **`check_npm_version(package)`**: Returns latest version/URL from NPM.
+- **`discover_local_repos(rootPath)`**: Scans `rootPath` for `.git` directories and returns potential repo entries.
+
+### B. Sync Strategies
+1. **Registry/Time-Based (`docs`)**: Re-crawl if a newer version exists or threshold is exceeded.
+2. **Git-Based (`repo`)**: 
+   - **Action**: Performs `git pull` in the `localPath`.
+   - **Benefit**: No data duplication; respects local VCS state.
+
+## 3. Storage Hierarchy
+- **Docs**: CAS-based (Hardlinked from `$DATA_DIR/store` to `$DATA_DIR/storage`).
+- **Repos**: Reference-only. The registry simply points to the original `localPath`.
+
+## 4. Resource Addressing
+- **Docs**: `docs://{lib}/{version}/{path}`
+- **Repos**: `repo://{repo-id}/{path}` (e.g., `repo://diamond-core/src/index.ts`)
 
 ## 5. The Sync Algorithm (CAS-Enabled)
 

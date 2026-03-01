@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+.env
+*.log
+
+# Local test drops
+lexical/
+ai-sdk/
+readability/
+ai-sdk-core/
