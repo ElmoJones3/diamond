@@ -124,6 +124,21 @@ function installCursor(entry: McpServerEntry): string {
   return configPath;
 }
 
+/**
+ * Gemini CLI — MCP host config at ~/.gemini/settings.json.
+ */
+function installGemini(entry: McpServerEntry): string {
+  const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+  const config = readJson(configPath);
+
+  const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
+  servers.diamond = entry;
+  config.mcpServers = servers;
+
+  writeJson(configPath, config);
+  return configPath;
+}
+
 // ─── Target registry ─────────────────────────────────────────────────────────
 
 type Target = {
@@ -150,6 +165,12 @@ const TARGETS: Target[] = [
     flag: 'cursor',
     install: installCursor,
     restartNote: 'Restart Cursor or reload MCP servers via the command palette.',
+  },
+  {
+    name: 'Gemini CLI',
+    flag: 'gemini-cli',
+    install: installGemini,
+    restartNote: 'New sessions will automatically include the Diamond MCP server.',
   },
 ];
 

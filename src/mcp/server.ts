@@ -30,6 +30,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import fs from 'fs-extra';
 import * as z from 'zod';
 
+import { removeCommand } from '#src/cli/remove.js';
 import { syncCommand } from '#src/cli/sync.js';
 import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
 import { type DiamondSearchResult, SearchService } from '#src/core/search.js';
@@ -227,10 +228,14 @@ export class McpServer {
             .number()
             .optional()
             .describe('Cap the number of pages crawled — useful for large doc sites during testing'),
+          description: z
+            .string()
+            .optional()
+            .describe('A short description of the library (e.g. "API mocking library for browser and Node.js")'),
         },
       },
-      async ({ lib, url, recursive, limit }) => {
-        await syncCommand(url, { key: lib, recursive, limit });
+      async ({ lib, url, recursive, limit, description }) => {
+        await syncCommand(url, { key: lib, recursive, limit, description });
         return { content: [{ type: 'text' as const, text: `Successfully synced ${lib}` }] };
       },
     );
@@ -268,25 +273,56 @@ export class McpServer {
       },
       async ({ lib, query, version }) => {
         await this.registry.init();
+        const entry = this.registry.getEntry(lib);
         const results = await this.search.search(lib, version || 'latest', query);
+        
         return {
           content: [
             {
               type: 'text' as const,
               text: JSON.stringify(
-                results.map((r) => ({
-                  title: r.title,
-                  // Hand back a fully-qualified docs:// URI so the AI can
-                  // immediately use it with the Documentation Page resource.
-                  uri: `docs://${lib}/${version || 'latest'}/${r.id}`,
-                  score: r.score,
-                })),
+                results.map((r) => {
+                  const isRepo = entry?.type === 'repo';
+                  const uri = isRepo 
+                    ? `repo://${lib}/${r.id}`
+                    : `docs://${lib}/${version || 'latest'}/${r.id}`;
+                  
+                  return {
+                    title: r.title,
+                    uri,
+                    score: r.score,
+                  };
+                }),
                 null,
                 2,
               ),
             },
           ],
         };
+      },
+    );
+
+    /**
+     * remove_library — remove a library or repository from Diamond's registry.
+     *
+     * For docs entries this also deletes the on-disk versioned storage so disk
+     * space is reclaimed. CAS blobs are left intact (they may be shared).
+     * For repo entries only the registry record is removed.
+     */
+    this.mcp.registerTool(
+      'remove_library',
+      {
+        description:
+          'Remove a library or repository from the Diamond registry. ' +
+          'For docs entries this also deletes the locally stored files. ' +
+          'For repo entries only the registry record is removed.',
+        inputSchema: {
+          id: z.string().describe('The registry id to remove (e.g. "msw" or "diamond-core")'),
+        },
+      },
+      async ({ id }) => {
+        await removeCommand(id);
+        return { content: [{ type: 'text' as const, text: `Successfully removed "${id}" from registry` }] };
       },
     );
 

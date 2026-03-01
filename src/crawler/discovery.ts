@@ -23,6 +23,7 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
+import robotsParser from 'robots-parser';
 
 export interface DiscoveryOptions {
   rootUrl: string;
@@ -32,6 +33,26 @@ export class DiscoveryService {
   // fast-xml-parser is a zero-dependency XML parser — lighter than a full DOM
   // parser and well-suited for the simple key/value structure of sitemaps.
   private parser = new XMLParser();
+
+  /**
+   * Fetch and create a robots.txt parser for the given origin.
+   */
+  async getRobotsParser(rootUrl: string) {
+    const origin = new URL(rootUrl).origin;
+    const robotsUrl = `${origin}/robots.txt`;
+    const robotsTxt = await this.fetchRobotsTxt(robotsUrl);
+    return robotsParser(robotsUrl, robotsTxt);
+  }
+
+  private async fetchRobotsTxt(url: string): Promise<string> {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) return await resp.text();
+    } catch (_e) {
+      // ignore
+    }
+    return '';
+  }
 
   /**
    * Attempt to collect URLs from the site's sitemap(s).

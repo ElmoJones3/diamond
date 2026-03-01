@@ -44,6 +44,8 @@ export interface SyncCommandOptions {
   concurrency?: number;
   /** Hard cap on total pages crawled. Useful for testing on large sites. */
   limit?: number;
+  /** A short human-readable description of the library (e.g. "API mocking library for browser and Node.js"). */
+  description?: string;
 }
 
 export async function syncCommand(url: string, options: SyncCommandOptions) {
@@ -146,6 +148,8 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     type: 'docs',
     name: libId,
     homepage: url,
+    // Prefer the newly supplied description; fall back to whatever was stored before.
+    description: options.description ?? (existing?.type === 'docs' ? existing.description : undefined),
     versions: {
       // Preserve any previously synced versions
       ...(existing?.type === 'docs' ? existing.versions : {}),

@@ -129,4 +129,21 @@ describe('DiscoveryService', () => {
     const version = await discovery.resolveVersion('https://example.com/docs');
     expect(version).toBeNull();
   });
+
+  it('should fetch and parse robots.txt', async () => {
+    const rootUrl = 'https://example.com';
+    (fetch as any).mockImplementation((url: string) => {
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve('User-agent: *\nDisallow: /private'),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    const robots = await discovery.getRobotsParser(rootUrl);
+    expect(robots.isAllowed('https://example.com/public', 'DiamondCrawler')).toBe(true);
+    expect(robots.isAllowed('https://example.com/private', 'DiamondCrawler')).toBe(false);
+  });
 });

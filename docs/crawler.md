@@ -22,11 +22,11 @@ Discovery strategy (in order):
 2. Parse `robots.txt` for `Sitemap:` directives (sites sometimes use custom paths)
 3. Parse all found sitemaps, recursing into sitemap index files
 
-Both `<urlset>` (standard: lists pages) and `<sitemapindex>` (lists other sitemaps) formats are supported.
+### 2. Respectful Crawling
 
-**Scope filtering** happens after discovery, in `CrawlerService`: only URLs sharing the same origin and path prefix as the root URL are queued.
+Diamond identifies as `DiamondCrawler`. Before crawling, it fetches the site's `robots.txt` and uses `robots-parser` to ensure it only visits allowed paths. This prevents Diamond from accidentally pulling in administrative or private pages and ensures it remains a "good citizen" tool.
 
-### 2. Parallel Processing (CrawlerService)
+### 3. Parallel Processing (CrawlerService)
 
 The main crawl loop runs `concurrency` (default: 5) async workers draining a shared queue. This is a simple but effective concurrency model for I/O-heavy work:
 
@@ -37,20 +37,20 @@ visited = Set()
 worker (×5):
   while queue not empty:
     url = queue.shift()
-    if visited.has(url): continue
+    if visited.has(url) OR disallowed_by_robots(url): continue
     visited.add(url)
     page = browser.getPage(url)        ← async: network + render time
     browser.revealAllContent(page)     ← click tab panels
     html = page.content()
     result = transformer.transform(html, url)
     discovered = walker.discoverUrls(page)
-    queue.push(...discovered)
+    queue.push(...allowed_by_robots(discovered))
     page.close()
 ```
 
 Because JavaScript is single-threaded, there are no data races on `queue` or `visited`. Concurrency comes from overlapping `await` calls — while one worker waits for a page to render, others process different pages.
 
-### 3. Browser Rendering (BrowserService)
+### 4. Browser Rendering (BrowserService)
 
 Diamond uses Playwright with headless Chromium. A single browser instance is shared across all workers to amortize the ~1 second startup cost.
 
@@ -66,7 +66,7 @@ Selectors used for tab detection:
 - `button[class*="tabs"]` — generic
 - `.tab-item` — Starlight and others
 
-### 4. Link Extraction (WalkerService)
+### 5. Link Extraction (WalkerService)
 
 After a page is processed, Diamond extracts links to add to the queue. Links are filtered to:
 1. **Same origin** — no external sites
@@ -78,7 +78,7 @@ Links are extracted using Playwright's `$$eval` inside the browser context — t
 
 URLs are normalized before queuing: trailing slashes and hash fragments are removed so `/docs/api/` and `/docs/api` don't both get crawled.
 
-### 5. HTML → Markdown (TransformerService)
+### 6. HTML → Markdown (TransformerService)
 
 A two-stage pipeline:
 

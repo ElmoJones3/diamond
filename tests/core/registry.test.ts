@@ -24,6 +24,7 @@ describe('RegistryManager', () => {
     type: 'docs',
     name: 'Mock Service Worker',
     homepage: 'https://mswjs.io',
+    description: 'API mocking library for browser and Node.js',
     versions: {
       '2.12.10': { syncedAt: new Date().toISOString() },
     },
@@ -34,6 +35,7 @@ describe('RegistryManager', () => {
     type: 'repo',
     name: 'Local App',
     localPath: '/Users/sf/work/local-app',
+    description: 'Internal app repository',
     config: {
       syncStrategy: 'git',
       branch: 'main',
@@ -128,5 +130,24 @@ describe('RegistryManager', () => {
 
     expect(registry.getEntry('msw')?.name).toBe('Updated MSW');
     expect(registry.listEntries().length).toBe(1);
+  });
+
+  it('should persist and retrieve description for docs entries', async () => {
+    await registry.addEntry(mockDocsEntry);
+    const entry = registry.getEntry('msw');
+    expect(entry?.description).toBe('API mocking library for browser and Node.js');
+  });
+
+  it('should persist and retrieve description for repo entries', async () => {
+    await registry.addEntry(mockRepoEntry);
+    const entry = registry.getEntry('local-app');
+    expect(entry?.description).toBe('Internal app repository');
+  });
+
+  it('should allow entries without a description', async () => {
+    const noDesc: RegistryEntry = { ...mockDocsEntry, description: undefined };
+    await registry.addEntry(noDesc);
+    const entry = registry.getEntry('msw');
+    expect(entry?.description).toBeUndefined();
   });
 });

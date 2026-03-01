@@ -39,6 +39,8 @@ export const RegistryEntrySchema = z.discriminatedUnion('type', [
     type: z.literal('docs'),
     name: z.string(),
     homepage: z.string().optional(),
+    /** A short human-readable description of the library, optionally supplied at sync time. */
+    description: z.string().optional(),
     /**
      * A map of version string → sync metadata.
      * The keys are semver strings (e.g. "2.12.10") or "latest".
@@ -57,6 +59,8 @@ export const RegistryEntrySchema = z.discriminatedUnion('type', [
     name: z.string(),
     /** Absolute path to the repository on the local filesystem. */
     localPath: z.string(),
+    /** A short human-readable description of the repository, optionally supplied at registration time. */
+    description: z.string().optional(),
     config: z.object({
       syncStrategy: z.literal('git'),
       /** The branch to pull from when auto-syncing. */

@@ -11,10 +11,11 @@ User / AI Host
 ┌─────────────┐       ┌──────────────────────────────────────────┐
 │  CLI        │       │  MCP Server (stdio)                      │
 │  diamond    │       │  tools: sync_docs, search_library,       │
-│  sync       │       │         list_registry                    │
+│  sync       │       │         list_registry, remove_library    │
 │  crawl      │       │  resources: docs://{lib}/{ver}/{path}    │
 │  serve      │       │            repo://{repo}/{path}          │
 │  repo add   │       └───────────────┬──────────────────────────┘
+│  watch      │                       │
 └──────┬──────┘                       │
        │          both call           │
        └──────────────────────────────┘
@@ -23,7 +24,8 @@ User / AI Host
               │   CLI layer     │  src/cli/
               │  sync.ts        │  Orchestrates the 5-stage sync pipeline
               │  crawl.ts       │  One-shot crawl to local directory
-              │  repo.ts        │  Register a local git repo
+              │  repo.ts        │  Register and index a local git repo
+              │  watch.ts       │  Start the live reference watcher
               └────────┬────────┘
                        │
        ┌───────────────┼───────────────┐
@@ -35,6 +37,8 @@ User / AI Host
 │  walker.ts  │ │  search     │ └────────────┘
 │  discovery  │ │  cas        │
 └─────────────┘ │  env        │
+                │  vector     │
+                │  watcher    │
                 └─────────────┘
 ```
 
@@ -63,7 +67,9 @@ The storage and metadata layer:
 - **`cas.ts`** — content-addressable store (SHA256-keyed, atomic writes)
 - **`storage.ts`** — versioned directory views via hardlinks + `latest` symlink
 - **`registry.ts`** — JSON manifest of all synced libraries and repos
-- **`search.ts`** — per-library MiniSearch index (build + query)
+- **`search.ts`** — hybrid search index (keyword + vector)
+- **`vector.ts`** — local semantic embeddings via Transformers.js
+- **`watcher.ts`** — live repository indexing via Chokidar
 - **`env.ts`** — XDG-compliant filesystem paths
 
 ## Data Flow: A Full Sync
@@ -72,6 +78,7 @@ The storage and metadata layer:
 diamond sync https://mswjs.io/docs --key msw --recursive
 
 1. CrawlerService.crawl()
+   ├── DiscoveryService.getRobotsParser()       → respect robots.txt (DiamondCrawler)
    ├── DiscoveryService.discoverFromSitemaps()  → seed URL list from sitemap.xml
    └── [parallel workers, concurrency=5]
        ├── BrowserService.getPage()             → headless Chromium, wait networkidle
@@ -88,7 +95,9 @@ diamond sync https://mswjs.io/docs --key msw --recursive
        └── fs.link()                            → hardlink store → storage/msw/2.12.10/api/handlers.md
        └── updateLatest()                       → symlink storage/msw/latest → 2.12.10
 
-4. SearchService.indexVersion()                 → build MiniSearch index → search-index.json
+4. SearchService.indexVersion()                 
+   ├── Build MiniSearch keyword index
+   └── VectorService.embed()                    → build semantic vector index
 
 5. RegistryManager.addEntry()                   → update registry.json
 ```
@@ -98,11 +107,11 @@ diamond sync https://mswjs.io/docs --key msw --recursive
 **Why CAS + hardlinks?**
 Multiple versions of the same library often share many identical pages (a changelog, a getting-started guide). Storing content by hash means identical pages are stored once regardless of how many versions reference them. Hardlinks give each version a complete directory view with zero data duplication.
 
+**Why Hybrid Search (Keyword + Semantic)?**
+Documentation lookup is often asymmetric. Keyword search (MiniSearch) is unbeatable for specific terms like `useCallback`, but Semantic Search (Vectors) is essential for conceptual questions like "how do I handle async errors". By combining both locally, Diamond provides high-quality search without external dependencies.
+
 **Why Playwright instead of fetch?**
 Modern doc sites (Docusaurus, VitePress, Nextra, Starlight) are JavaScript SPAs. Plain fetch only returns an HTML shell; the content is injected after hydration. Playwright renders the full page the same way a browser would.
 
 **Why a local registry instead of a server?**
 Diamond is a personal tool — it runs on the developer's machine alongside their AI assistant. A local JSON manifest is zero-infrastructure, trivially backed up, and works without a network connection after the initial sync.
-
-**Why MiniSearch instead of a vector database?**
-Offline-first. Vector databases need either a running server or embedding calls. MiniSearch is in-process, stores as plain JSON, and works instantly after sync with no additional setup.

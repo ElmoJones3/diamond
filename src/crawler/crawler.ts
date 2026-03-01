@@ -80,29 +80,20 @@ export class CrawlerService {
 
     try {
       // Boot a single headless Chromium instance shared across all workers.
-      // Launching a browser is expensive (~1 second), so we do it once here
-      // rather than per-page.
       await this.browser.init();
+
+      // Fetch robots.txt parser
+      const robots = await this.discovery.getRobotsParser(url);
+      const userAgent = 'DiamondCrawler';
 
       // -----------------------------------------------------------------------
       // Phase 1: Sitemap Discovery
-      //
-      // Before loading a single page with Playwright, we try to fetch the
-      // site's sitemap. Sitemaps are plain XML files that list every URL the
-      // site wants indexed — loading one HTTP request can give us hundreds of
-      // URLs for free, skipping a lot of in-browser link-following overhead.
-      //
-      // After fetching, we scope the results to URLs that share the same
-      // origin *and* path prefix as the root URL — so crawling
-      // "https://mswjs.io/docs" won't accidentally pull in "/blog" pages.
       // -----------------------------------------------------------------------
       const sitemapUrls = await this.discovery.discoverFromSitemaps(url);
 
       const root = new URL(url);
 
       // Compute the "scope prefix" — the directory portion of the root path.
-      // e.g. "/docs/api/handlers" → "/docs/api/" (parent dir)
-      //       "/docs/"            → "/docs/"       (already a directory)
       let scopePrefix = root.pathname;
       if (!scopePrefix.endsWith('/')) {
         const parts = scopePrefix.split('/');
@@ -116,26 +107,20 @@ export class CrawlerService {
         try {
           const discovered = new URL(u);
           if (discovered.origin === root.origin && discovered.pathname.startsWith(scopePrefix)) {
-            // Normalize before the visited check — sitemaps often list both
-            // "https://example.com/docs/" and "https://example.com/docs" which
-            // would otherwise crawl the same page twice and produce duplicate paths.
             const normalized = discovered.origin + discovered.pathname.replace(/\/$/, '');
-            if (!visited.has(normalized)) queue.push(normalized);
+            
+            // Check robots.txt for sitemap URLs too
+            if (robots.isAllowed(normalized, userAgent) && !visited.has(normalized)) {
+              queue.push(normalized);
+            }
           }
         } catch (_e) {
-          // Skip malformed URLs in the sitemap
+          // Skip malformed URLs
         }
       }
 
       // -----------------------------------------------------------------------
       // Phase 2: Parallel Worker Loop
-      //
-      // We spin up `concurrency` async workers that all drain the same queue.
-      // This is a lightweight alternative to a real worker pool: each async
-      // function grabs the next URL, processes it (awaiting I/O), then loops.
-      // Because JS is single-threaded, there's no data-race on `queue` or
-      // `visited` — but we still get concurrency from overlapping I/O waits
-      // (network, browser rendering, etc.).
       // -----------------------------------------------------------------------
       const processQueue = async () => {
         while (queue.length > 0) {
@@ -143,6 +128,13 @@ export class CrawlerService {
 
           const currentUrl = queue.shift();
           if (!currentUrl || visited.has(currentUrl)) continue;
+
+          // Politeness check: robots.txt
+          if (!robots.isAllowed(currentUrl, userAgent)) {
+            console.warn(`Skipping disallowed URL: ${currentUrl}`);
+            continue;
+          }
+
           visited.add(currentUrl);
 
           console.warn(`Crawling [${visited.size}/${limit || queue.length + visited.size}]: ${currentUrl}...`);
@@ -181,7 +173,9 @@ export class CrawlerService {
             if (recursive) {
               const discovered = await this.walker.discoverUrls(page, { rootUrl: url });
               for (const d of discovered) {
-                if (!visited.has(d)) queue.push(d);
+                if (robots.isAllowed(d, userAgent) && !visited.has(d)) {
+                  queue.push(d);
+                }
               }
             }
 
