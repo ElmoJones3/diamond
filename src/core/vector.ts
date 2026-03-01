@@ -24,7 +24,7 @@
  *     (<50ms), and similarity comparison is a simple dot product.
  */
 
-import { pipeline, type Pipeline, env } from '@xenova/transformers';
+import { env, type Pipeline, pipeline } from '@xenova/transformers';
 
 // Configure transformers.js for local usage
 env.allowLocalModels = false; // We want to fetch from HF and cache locally
@@ -43,7 +43,7 @@ export interface VectorChunk {
 }
 
 export class VectorService {
-  private extractor: any = null;
+  private extractor: Pipeline | null = null;
 
   /**
    * Initialize the embedding pipeline.
@@ -67,7 +67,7 @@ export class VectorService {
   async embed(text: string): Promise<number[]> {
     if (!this.extractor) await this.init();
 
-    const output = await this.extractor!(text, {
+    const output = await this.extractor?.(text, {
       pooling: 'mean',
       normalize: true,
     });
@@ -99,8 +99,6 @@ export class VectorService {
   chunkMarkdown(content: string): string[] {
     // Split by Markdown headers while keeping the header text in the chunk
     const sections = content.split(/(?=^#{1,3} )/m);
-    return sections
-      .map(s => s.trim())
-      .filter(s => s.length > 20); // Lowered from 50 to include smaller docs
+    return sections.map((s) => s.trim()).filter((s) => s.length > 20); // Lowered from 50 to include smaller docs
   }
 }

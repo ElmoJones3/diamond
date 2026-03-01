@@ -22,14 +22,14 @@ describe('removeCommand', () => {
   it('should remove a docs entry and its storage', async () => {
     const registry = new RegistryManager();
     const id = 'test-lib';
-    
+
     // 1. Setup registry entry
     await registry.addEntry({
       id,
       type: 'docs',
       name: 'Test Lib',
       homepage: 'https://example.com',
-      versions: { '1.0.0': { syncedAt: new Date().toISOString() } }
+      versions: { '1.0.0': { syncedAt: new Date().toISOString() } },
     });
 
     // 2. Setup storage directory
@@ -62,7 +62,7 @@ describe('removeCommand', () => {
       name: 'Test Repo',
       localPath,
       config: { syncStrategy: 'git', autoPull: true },
-      syncedAt: new Date().toISOString()
+      syncedAt: new Date().toISOString(),
     });
 
     // 2. Run remove

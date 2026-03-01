@@ -42,7 +42,7 @@ export class DiscoveryService {
     const robotsUrl = `${origin}/robots.txt`;
     const robotsTxt = await this.fetchRobotsTxt(robotsUrl);
     // robots-parser is CJS; default import not callable under NodeNext without this cast
-    // biome-ignore lint/suspicious/noExplicitAny
+    // biome-ignore lint/suspicious/noExplicitAny: robots-parser is CJS; default import not callable under NodeNext without this cast
     return (robotsParser as any)(robotsUrl, robotsTxt);
   }
 
@@ -121,28 +121,40 @@ export class DiscoveryService {
    * Parse sitemap data (from XML) into a flat array of URLs.
    * Handles both <urlset> and <sitemapindex> formats.
    */
-  private async parseSitemapData(data: any): Promise<string[]> {
+  private async parseSitemapData(data: {
+    sitemapindex?: { sitemap: { loc: string } | { loc: string }[] };
+    urlset?: { url: { loc: string } | { loc: string }[] };
+  }): Promise<string[]> {
     const urls: string[] = [];
 
     if (data.sitemapindex?.sitemap) {
-      const sitemaps = Array.isArray(data.sitemapindex.sitemap)
-        ? data.sitemapindex.sitemap
-        : [data.sitemapindex.sitemap];
-
-      for (const sm of sitemaps) {
-        if (sm.loc) {
-          const nested = await this.parseSitemap(sm.loc);
-          urls.push(...nested);
-        }
-      }
-    } else if (data.urlset?.url) {
-      const entries = Array.isArray(data.urlset.url) ? data.urlset.url : [data.urlset.url];
-
-      for (const entry of entries) {
-        if (entry.loc) urls.push(entry.loc);
-      }
+      urls.push(...(await this.handleSitemapIndex(data.sitemapindex.sitemap)));
     }
 
+    if (data.urlset?.url) {
+      urls.push(...this.handleUrlSet(data.urlset.url));
+    }
+
+    return urls;
+  }
+
+  private async handleSitemapIndex(sitemap: { loc: string } | { loc: string }[]): Promise<string[]> {
+    const urls: string[] = [];
+    const sitemaps = Array.isArray(sitemap) ? sitemap : [sitemap];
+    for (const sm of sitemaps) {
+      if (sm.loc) {
+        urls.push(...(await this.parseSitemap(sm.loc)));
+      }
+    }
+    return urls;
+  }
+
+  private handleUrlSet(url: { loc: string } | { loc: string }[]): string[] {
+    const urls: string[] = [];
+    const entries = Array.isArray(url) ? url : [url];
+    for (const entry of entries) {
+      if (entry.loc) urls.push(entry.loc);
+    }
     return urls;
   }
 

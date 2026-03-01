@@ -187,7 +187,9 @@ export async function installCommand(options: { targets: string[] }) {
   console.warn(`\nDiamond install — binary: ${diamondBin}\n`);
 
   if (diamondBin.includes('/.nvm/versions/') || diamondBin.includes('/.fnm/node-versions/')) {
-    console.warn('  ⚠  Binary is inside an nvm/fnm versioned path. If you switch Node versions, re-run `diamond install` to update the entry.\n');
+    console.warn(
+      '  ⚠  Binary is inside an nvm/fnm versioned path. If you switch Node versions, re-run `diamond install` to update the entry.\n',
+    );
   }
 
   for (const target of activeTargets) {

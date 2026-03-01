@@ -13,16 +13,16 @@ import { WatcherService } from '#src/core/watcher.js';
  */
 export async function watchCommand(): Promise<void> {
   const watcher = new WatcherService();
-  
+
   try {
     await watcher.start();
-    
+
     // Keep process alive
     process.on('SIGINT', async () => {
       await watcher.stop();
       process.exit(0);
     });
-    
+
     process.on('SIGTERM', async () => {
       await watcher.stop();
       process.exit(0);

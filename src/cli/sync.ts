@@ -24,7 +24,7 @@
  */
 
 import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
-import { type DiamondSearchResult, SearchService } from '#src/core/search.js';
+import { SearchService } from '#src/core/search.js';
 import { StorageManager } from '#src/core/storage.js';
 import { CrawlerService } from '#src/crawler/crawler.js';
 import { DiscoveryService } from '#src/crawler/discovery.js';

@@ -21,10 +21,10 @@
  *     → CrawlResult[]
  */
 
-import { TransformerService } from '#src/transformer/html-to-markdown.js';
 import { BrowserService } from '#src/crawler/browser.js';
 import { DiscoveryService } from '#src/crawler/discovery.js';
 import { WalkerService } from '#src/crawler/walker.js';
+import { TransformerService } from '#src/transformer/html-to-markdown.js';
 
 /** Options for a single crawl run. */
 export interface CrawlOptions {
@@ -63,6 +63,11 @@ export interface CrawlResult {
   title: string;
 }
 
+interface RobotsParser {
+  isAllowed(url: string, userAgent: string): boolean;
+  getSitemaps(): string[];
+}
+
 export class CrawlerService {
   private browser = new BrowserService();
   private transformer = new TransformerService();
@@ -72,28 +77,17 @@ export class CrawlerService {
   async crawl(options: CrawlOptions): Promise<CrawlResult[]> {
     const { url, recursive, concurrency = 5, limit } = options;
     const results: CrawlResult[] = [];
-
-    // Track visited URLs so we never process the same page twice, even if
-    // multiple workers discover the same link at the same time.
     const visited = new Set<string>();
     const queue: string[] = [url];
 
     try {
-      // Boot a single headless Chromium instance shared across all workers.
       await this.browser.init();
-
-      // Fetch robots.txt parser
       const robots = await this.discovery.getRobotsParser(url);
       const userAgent = 'DiamondCrawler';
 
-      // -----------------------------------------------------------------------
       // Phase 1: Sitemap Discovery
-      // -----------------------------------------------------------------------
       const sitemapUrls = await this.discovery.discoverFromSitemaps(url);
-
       const root = new URL(url);
-
-      // Compute the "scope prefix" — the directory portion of the root path.
       let scopePrefix = root.pathname;
       if (!scopePrefix.endsWith('/')) {
         const parts = scopePrefix.split('/');
@@ -108,95 +102,117 @@ export class CrawlerService {
           const discovered = new URL(u);
           if (discovered.origin === root.origin && discovered.pathname.startsWith(scopePrefix)) {
             const normalized = discovered.origin + discovered.pathname.replace(/\/$/, '');
-            
-            // Check robots.txt for sitemap URLs too
             if (robots.isAllowed(normalized, userAgent) && !visited.has(normalized)) {
               queue.push(normalized);
             }
           }
         } catch (_e) {
-          // Skip malformed URLs
+          /* Skip malformed */
         }
       }
 
-      // -----------------------------------------------------------------------
       // Phase 2: Parallel Worker Loop
-      // -----------------------------------------------------------------------
-      const processQueue = async () => {
-        while (queue.length > 0) {
-          if (limit && visited.size >= limit) break;
-
-          const currentUrl = queue.shift();
-          if (!currentUrl || visited.has(currentUrl)) continue;
-
-          // Politeness check: robots.txt
-          if (!robots.isAllowed(currentUrl, userAgent)) {
-            console.warn(`Skipping disallowed URL: ${currentUrl}`);
-            continue;
-          }
-
-          visited.add(currentUrl);
-
-          console.warn(`Crawling [${visited.size}/${limit || queue.length + visited.size}]: ${currentUrl}...`);
-
-          try {
-            // Open a new browser tab, navigate, and wait for the page to fully
-            // settle (network idle + DOM ready). SPA frameworks like Next.js or
-            // Docusaurus hydrate after the initial HTML arrives, so we need to
-            // wait for them to finish before reading the DOM.
-            const page = await this.browser.getPage(currentUrl);
-
-            // Click through any tab panels / disclosure widgets so their
-            // content is in the DOM before we extract HTML. Frameworks like
-            // Docusaurus hide tab content in inactive panes by default.
-            await this.browser.revealAllContent(page);
-
-            const html = await page.content();
-            const result = await this.transformer.transform(html, currentUrl);
-
-            // Derive a stable relative file path from the URL's pathname.
-            // A trailing slash becomes an implicit "index" — this keeps paths
-            // consistent regardless of whether the server redirects /docs/ → /docs/index.
-            const urlObj = new URL(currentUrl);
-            const relativePath = urlObj.pathname.replace(/\/$/, '') || 'index';
-
-            results.push({
-              url: currentUrl,
-              // Strip a leading slash before appending .md
-              path: `${relativePath.startsWith('/') ? relativePath.slice(1) : relativePath}.md`,
-              content: result.markdown,
-              title: result.title,
-            });
-
-            // After processing a page, extract its links and add any new
-            // same-scope URLs to the queue for the workers to pick up.
-            if (recursive) {
-              const discovered = await this.walker.discoverUrls(page, { rootUrl: url });
-              for (const d of discovered) {
-                if (robots.isAllowed(d, userAgent) && !visited.has(d)) {
-                  queue.push(d);
-                }
-              }
-            }
-
-            await page.close();
-          } catch (e) {
-            console.error(`Failed to crawl ${currentUrl}:`, e);
-          }
-        }
-      };
-
-      // Start all workers simultaneously; they all share the same queue and
-      // race to process URLs. Promise.all waits until every worker exits
-      // (i.e. the queue is empty or the limit is hit).
-      const workers = Array.from({ length: concurrency }, () => processQueue());
+      const workers = Array.from({ length: concurrency }, () =>
+        this.runWorker({
+          queue,
+          visited,
+          limit,
+          robots,
+          userAgent,
+          url,
+          recursive,
+          results,
+        }),
+      );
       await Promise.all(workers);
 
       return results;
     } finally {
-      // Always close the browser, even if crawling threw an error — otherwise
-      // the Chromium process will linger in the background.
       await this.browser.close();
     }
+  }
+
+  private async runWorker(context: {
+    queue: string[];
+    visited: Set<string>;
+    limit?: number;
+    robots: RobotsParser;
+    userAgent: string;
+    url: string;
+    recursive?: boolean;
+    results: CrawlResult[];
+  }) {
+    while (context.queue.length > 0) {
+      if (context.limit && context.visited.size >= context.limit) break;
+
+      const currentUrl = context.queue.shift();
+      if (!currentUrl || context.visited.has(currentUrl)) continue;
+
+      if (!context.robots.isAllowed(currentUrl, context.userAgent)) {
+        console.warn(`Skipping disallowed URL: ${currentUrl}`);
+        continue;
+      }
+
+      context.visited.add(currentUrl);
+      console.warn(
+        `Crawling [${context.visited.size}/${context.limit || context.queue.length + context.visited.size}]: ${currentUrl}...`,
+      );
+
+      try {
+        const result = await this.crawlSinglePage(currentUrl, {
+          recursive: context.recursive,
+          rootUrl: context.url,
+          robots: context.robots,
+          userAgent: context.userAgent,
+          queue: context.queue,
+          visited: context.visited,
+        });
+        if (result) context.results.push(result);
+      } catch (e) {
+        console.error(`Failed to crawl ${currentUrl}:`, e);
+      }
+    }
+  }
+
+  /**
+   * Processes a single page: renders, transforms to Markdown, and discovers new links.
+   */
+  private async crawlSinglePage(
+    currentUrl: string,
+    context: {
+      recursive?: boolean;
+      rootUrl: string;
+      robots: RobotsParser;
+      userAgent: string;
+      queue: string[];
+      visited: Set<string>;
+    },
+  ): Promise<CrawlResult | null> {
+    const page = await this.browser.getPage(currentUrl);
+    await this.browser.revealAllContent(page);
+
+    const html = await page.content();
+    const result = await this.transformer.transform(html, currentUrl);
+
+    const urlObj = new URL(currentUrl);
+    const relativePath = urlObj.pathname.replace(/\/$/, '') || 'index';
+
+    if (context.recursive) {
+      const discovered = await this.walker.discoverUrls(page, { rootUrl: context.rootUrl });
+      for (const d of discovered) {
+        if (context.robots.isAllowed(d, context.userAgent) && !context.visited.has(d)) {
+          context.queue.push(d);
+        }
+      }
+    }
+
+    await page.close();
+
+    return {
+      url: currentUrl,
+      path: `${relativePath.startsWith('/') ? relativePath.slice(1) : relativePath}.md`,
+      content: result.markdown,
+      title: result.title,
+    };
   }
 }

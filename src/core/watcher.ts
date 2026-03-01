@@ -20,8 +20,7 @@
  *      `SearchService.updateRepoFile()` for an incremental re-index.
  */
 
-import { watch, type FSWatcher } from 'chokidar';
-import path from 'node:path';
+import { type FSWatcher, watch } from 'chokidar';
 import { RegistryManager } from '#src/core/registry.js';
 import { SearchService } from '#src/core/search.js';
 
@@ -50,13 +49,7 @@ Starting Watcher... monitoring ${repos.length} repositories:`);
     }
 
     this.watcher = watch(paths, {
-      ignored: [
-        '**/node_modules/**',
-        '**/.git/**',
-        '**/dist/**',
-        '**/build/**',
-        '**/.cache/**',
-      ],
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/.cache/**'],
       persistent: true,
       ignoreInitial: false, // We don't want to trigger a full re-index on start here, SearchService handles it
     });
@@ -77,7 +70,7 @@ Starting Watcher... monitoring ${repos.length} repositories:`);
     if (!repo) return;
 
     // console.warn(`[${type}] ${path.relative(repo.localPath, filePath)}`);
-    
+
     try {
       await this.search.updateRepoFile(repo.id, repo.localPath, filePath, type);
     } catch (e) {
