@@ -232,10 +232,14 @@ export class McpServer {
             .string()
             .optional()
             .describe('A short description of the library (e.g. "API mocking library for browser and Node.js")'),
+          version: z
+            .string()
+            .optional()
+            .describe('Pin a specific version string (default: auto-detect from URL/meta tags)'),
         },
       },
-      async ({ lib, url, recursive, limit, description }) => {
-        await syncCommand(url, { key: lib, recursive, limit, description });
+      async ({ lib, url, recursive, limit, description, version }) => {
+        await syncCommand(url, { key: lib, recursive, limit, description, version });
         return { content: [{ type: 'text' as const, text: `Successfully synced ${lib}` }] };
       },
     );
@@ -323,6 +327,99 @@ export class McpServer {
       async ({ id }) => {
         await removeCommand(id);
         return { content: [{ type: 'text' as const, text: `Successfully removed "${id}" from registry` }] };
+      },
+    );
+
+    /**
+     * describe_library — set or update the description on a registry entry.
+     *
+     * Useful for annotating entries that were synced or registered before the
+     * description field existed, or for correcting an existing description,
+     * without having to re-crawl or re-register the entry from scratch.
+     */
+    this.mcp.registerTool(
+      'describe_library',
+      {
+        description:
+          'Set or update the description for a library or repository already in the registry. ' +
+          'Use this to annotate entries without re-syncing them.',
+        inputSchema: {
+          id: z.string().describe('The registry id to update (e.g. "msw" or "diamond-core")'),
+          description: z.string().describe('The description to set'),
+        },
+      },
+      async ({ id, description }) => {
+        await this.registry.init();
+        const entry = this.registry.getEntry(id);
+        if (!entry) throw new Error(`No registry entry found with id "${id}"`);
+        await this.registry.addEntry({ ...entry, description });
+        return { content: [{ type: 'text' as const, text: `Updated description for "${id}"` }] };
+      },
+    );
+
+    /**
+     * list_repo_files — browse the file tree of a registered repository.
+     *
+     * The repo://{id}/{path} resource URIs require knowing a file path upfront.
+     * This tool provides the file tree so the AI can discover what's available
+     * before deciding which files to read.
+     *
+     * Returns a list of relative paths and their repo:// URIs. Skips common
+     * non-source directories (.git, node_modules, dist) and lock files.
+     */
+    this.mcp.registerTool(
+      'list_repo_files',
+      {
+        description:
+          'List files in a registered repository so you can discover what to read. ' +
+          'Returns relative paths and their `repo://` URIs. ' +
+          'Optionally scope to a subdirectory with the `path` parameter.',
+        inputSchema: {
+          id: z.string().describe('The repository id from the registry'),
+          path: z
+            .string()
+            .optional()
+            .describe('Subdirectory to list relative to the repo root (default: entire repo)'),
+        },
+      },
+      async ({ id, path: subPath }) => {
+        await this.registry.init();
+        const entry = this.registry.getEntry(id);
+        if (entry?.type !== 'repo') throw new Error(`No repo entry found with id "${id}"`);
+
+        const root = subPath ? path.join(entry.localPath, subPath) : entry.localPath;
+
+        const IGNORED = new Set(['.git', 'node_modules', 'dist', '.next', '.nuxt', '__pycache__', '.venv']);
+        const IGNORED_EXTS = new Set(['.lock', '.log', '.map', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf']);
+
+        const files: string[] = [];
+
+        const walk = async (dir: string) => {
+          let entries: fs.Dirent[];
+          try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const ent of entries) {
+            if (IGNORED.has(ent.name)) continue;
+            if (ent.name.startsWith('.') && ent.isDirectory()) continue;
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+              await walk(full);
+            } else if (ent.isFile()) {
+              if (!IGNORED_EXTS.has(path.extname(ent.name))) {
+                files.push(path.relative(entry.localPath, full));
+              }
+            }
+          }
+        };
+
+        await walk(root);
+        files.sort();
+
+        const results = files.map((f) => ({ path: f, uri: `repo://${id}/${f}` }));
+        return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] };
       },
     );
 

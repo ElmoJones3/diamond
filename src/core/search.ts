@@ -281,7 +281,7 @@ export class SearchService {
     const relPath = path.relative(localPath, filePath);
 
     if (type === 'unlink') {
-      if (miniSearch.has(relPath)) miniSearch.removeById(relPath);
+      if (miniSearch.has(relPath)) miniSearch.discard(relPath);
     } else if (this.isSupportedFile(filePath)) {
       try {
         const content = await fs.readFile(filePath, 'utf-8');
@@ -298,7 +298,7 @@ export class SearchService {
         }
       } catch (_e) {
         // file might have been deleted between event and read
-        if (miniSearch.has(relPath)) miniSearch.removeById(relPath);
+        if (miniSearch.has(relPath)) miniSearch.discard(relPath);
       }
     }
 

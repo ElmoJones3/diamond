@@ -30,11 +30,12 @@
 import { Command } from 'commander';
 
 import { crawlCommand } from '#src/cli/crawl.js';
+import { gcCommand } from '#src/cli/gc.js';
 import { installCommand } from '#src/cli/install.js';
 import { removeCommand } from '#src/cli/remove.js';
 import { addRepoCommand } from '#src/cli/repo.js';
 import { syncCommand } from '#src/cli/sync.js';
-import { watchCommand } from '#src/cli/watch.ts';
+import { watchCommand } from '#src/cli/watch.js';
 import { McpServer } from '#src/mcp/server.js';
 
 const program = new Command();
@@ -171,6 +172,21 @@ program
   });
 
 // -----------------------------------------------------------------------------
+// gc — garbage collect orphaned CAS blobs
+// -----------------------------------------------------------------------------
+program
+  .command('gc')
+  .description('Remove orphaned blobs from the content-addressable store to reclaim disk space')
+  .action(async () => {
+    try {
+      await gcCommand();
+    } catch (e) {
+      console.error('Fatal error during gc:', e);
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
 // watch — live indexing for local repositories
 // -----------------------------------------------------------------------------
 program
@@ -189,6 +205,19 @@ program
 // repo — manage local git repositories
 // -----------------------------------------------------------------------------
 const repo = program.command('repo').description('Manage local git repositories tracked by Diamond');
+
+repo
+  .command('remove')
+  .description('Remove a repository from the Diamond registry')
+  .argument('<id>', 'Registry identifier to remove')
+  .action(async (id) => {
+    try {
+      await removeCommand(id);
+    } catch (e) {
+      console.error('Fatal error removing repo:', e);
+      process.exit(1);
+    }
+  });
 
 repo
   .command('add')

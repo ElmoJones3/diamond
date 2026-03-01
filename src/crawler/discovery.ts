@@ -41,7 +41,9 @@ export class DiscoveryService {
     const origin = new URL(rootUrl).origin;
     const robotsUrl = `${origin}/robots.txt`;
     const robotsTxt = await this.fetchRobotsTxt(robotsUrl);
-    return robotsParser(robotsUrl, robotsTxt);
+    // robots-parser is CJS; default import not callable under NodeNext without this cast
+    // biome-ignore lint/suspicious/noExplicitAny
+    return (robotsParser as any)(robotsUrl, robotsTxt);
   }
 
   private async fetchRobotsTxt(url: string): Promise<string> {

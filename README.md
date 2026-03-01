@@ -14,13 +14,13 @@ Inspired by pnpm. Built out of necessity.
 git clone https://github.com/elmojones3/diamond.git
 cd diamond
 pnpm install        # installs dependencies and builds
-npm link            # makes `diamond` available globally
+pnpm link --global  # makes `diamond` available globally
 
 # Sync a library's docs
 diamond sync https://mswjs.io/docs --key msw --recursive
 
-# Install as an MCP server (Claude, Cursor, or Gemini CLI)
-diamond install --gemini-cli --claude-code
+# Install as an MCP server (Claude Code, Claude Desktop, Cursor, or Gemini CLI)
+diamond install --claude-code
 
 # Start the MCP server
 diamond serve
@@ -62,14 +62,17 @@ diamond crawl <url> --key <name> --recursive
 # Start the MCP server
 diamond serve
 
-# Register a local git repository (and index it)
+# Register a local git repository (immediately indexed and searchable)
 diamond repo add <path> --key <name>
 
-# Start the live reference watcher for repos
+# Watch registered repos and keep their indices up to date as files change
 diamond watch
 
+# Remove a library or repo from the registry (reclaims disk space for docs)
+diamond remove <id>
+
 # Automatic MCP configuration
-diamond install --gemini-cli --claude-desktop --cursor
+diamond install --claude-code --claude-desktop --cursor --gemini-cli
 ```
 
 ## MCP Tools
@@ -80,7 +83,8 @@ Once `diamond serve` is running, your AI assistant has access to:
 |---|---|
 | `list_registry` | List all synced libraries and repos |
 | `sync_docs` | Crawl and sync a library (callable from the AI) |
-| `search_library` | Hybrid search (Keyword + Semantic) across docs or repos |
+| `search_library` | Hybrid search (keyword + semantic) across docs or repos |
+| `remove_library` | Remove a library or repo from the registry |
 
 ## MCP Setup
 

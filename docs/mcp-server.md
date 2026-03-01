@@ -86,6 +86,10 @@ Crawl a documentation site and store it in Diamond's registry.
 | `url` | `string` | Root URL of the documentation site |
 | `recursive` | `boolean?` | Follow sub-page links (default: `true`) |
 | `limit` | `number?` | Cap on total pages crawled |
+| `description` | `string?` | Short description stored in the registry |
+| `version` | `string?` | Pin a specific version (default: auto-detect from URL/meta tags) |
+
+The `description` field is optional but useful — when the AI calls `sync_docs` it already knows what the library is, so it can populate this itself. It surfaces in `list_registry` to help orient future sessions.
 
 **Returns:** A success message on completion.
 
@@ -93,7 +97,45 @@ Crawl a documentation site and store it in Diamond's registry.
 
 ### `remove_library`
 
-Remove a library or repository from the registry. Reclaims disk space for `docs` entries.
+Remove a library or repository from Diamond's registry.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The registry identifier to remove (e.g. `"msw"`, `"diamond-core"`) |
+
+For `docs` entries, the versioned storage directory is deleted and disk space is reclaimed. CAS blobs (the SHA256 content store) are left intact as they may be shared with other libraries. For `repo` entries, only the registry record is removed — the repository on disk is untouched.
+
+**Returns:** A success message on completion.
+
+---
+
+### `describe_library`
+
+Set or update the description on a registry entry without re-syncing.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The registry identifier to update |
+| `description` | `string` | The description to set |
+
+Useful for annotating entries that were registered before the description field was introduced, or for repos where there is no re-sync path.
+
+**Returns:** A success message on completion.
+
+---
+
+### `list_repo_files`
+
+List the files in a registered repository so the AI can discover what to read.
+
+| Input | Type | Description |
+|---|---|---|
+| `id` | `string` | The repository identifier from the registry |
+| `path` | `string?` | Subdirectory to scope the listing to (default: entire repo) |
+
+Returns a sorted list of `{ path, uri }` objects. Skips `.git`, `node_modules`, `dist`, and binary/lock files. Use the returned `repo://` URIs directly with the Repository File resource to read specific files.
+
+**Returns:** JSON array of `{ path: string, uri: string }`.
 
 ## Recommended Workflow
 

@@ -26,8 +26,13 @@
 ## Phase 4: CLI & MCP Interface ✅
 - [x] `diamond watch` — live re-indexing for local repos (Chokidar)
 - [x] `diamond install` — automatic MCP configuration for major tools
-- [x] `diamond remove` — reclaim disk space by deleting synced doc libraries
+- [x] `diamond remove` / `diamond repo remove` — remove libraries and repos from the registry
+- [x] `diamond gc` — garbage collect orphaned CAS blobs after removes
 - [x] `search_library` tool updated for hybrid search and repo support
+- [x] `describe_library` MCP tool — annotate registry entries without re-syncing
+- [x] `list_repo_files` MCP tool — browse a registered repo's file tree
+- [x] `sync_docs` MCP tool exposes version pinning
+- [x] Optional `description` field on all registry entry types
 - [x] XDG-compliant filesystem paths (data, config, cache)
 
 ## Up Next

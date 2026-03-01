@@ -20,6 +20,7 @@ diamond sync https://zod.dev --key zod --recursive --limit 50
 | `--recursive` | `false` | Follow internal links to crawl sub-pages |
 | `--concurrency <n>` | `5` | Pages to process simultaneously |
 | `--limit <n>` | none | Stop after this many pages |
+| `--description <text>` | none | Short description stored in the registry (e.g. `"API mocking library"`) |
 
 ---
 
@@ -31,7 +32,12 @@ Register and index a local git repository.
 diamond repo add ~/work/my-library --key my-lib
 ```
 
-Diamond will perform an initial indexing of the repository (Markdown and code files) so it is immediately searchable via MCP. It does not copy any files — it reads directly from your checkout.
+Diamond indexes the repository immediately (Markdown and source files) so it is searchable via MCP from the first request. It does not copy any files — it reads directly from your checkout.
+
+| Option | Default | Description |
+|---|---|---|
+| `--key <name>` | directory name | Registry identifier for this repo |
+| `--description <text>` | none | Short description stored in the registry |
 
 ---
 
@@ -61,6 +67,28 @@ diamond install --gemini-cli --claude-code --cursor
 | `--claude-code` | `~/.claude.json` |
 | `--claude-desktop` | `~/Library/Application Support/Claude/...` |
 | `--cursor` | `~/.cursor/mcp.json` |
+
+---
+
+### `diamond repo remove <id>`
+
+Remove a repository from the registry. Alias for `diamond remove <id>` scoped to the `repo` subcommand for symmetry with `diamond repo add`.
+
+```bash
+diamond repo remove my-library
+```
+
+---
+
+### `diamond gc`
+
+Garbage collect the content-addressable store.
+
+```bash
+diamond gc
+```
+
+When a docs library is removed, its versioned storage directory is deleted but the underlying CAS blobs are left behind — they may be shared across library versions. `diamond gc` scans every blob in the store and removes any that have no hardlinks from versioned storage, reclaiming their disk space. Safe to run at any time.
 
 ---
 

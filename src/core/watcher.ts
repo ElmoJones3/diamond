@@ -66,8 +66,7 @@ Starting Watcher... monitoring ${repos.length} repositories:`);
       .on('change', (filePath) => this.handleChange(filePath, 'change'))
       .on('unlink', (filePath) => this.handleChange(filePath, 'unlink'));
 
-    console.warn('
-Watcher is active. Press Ctrl+C to stop.');
+    console.warn('\nWatcher is active. Press Ctrl+C to stop.');
   }
 
   private async handleChange(filePath: string, type: 'add' | 'change' | 'unlink') {
