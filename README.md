@@ -1,20 +1,29 @@
 # Diamond
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-elmojones3-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/elmojones3)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-elmojones3-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/elmojones3) [![CI](https://github.com/ElmoJones3/diamond/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ElmoJones3/diamond/actions/workflows/ci.yml)
 
-I got tired of watching an AI agent make fourteen tool calls to resolve a TanStack issue. So I built this.
+I got tired of watching an AI agent make fourteen tool calls to resolve a TanStack issue.
 
 Diamond is a documentation registry and MCP server. It crawls a docs site once, stores the content locally, and serves it to your AI assistant on demand — no network call, no hallucinated APIs, no nonsense.
 
-Inspired by pnpm. Built out of necessity.
+Inspired by pnpm.
+
+If you like it, well then, I made this for you.
 
 ## Quick Start
 
 ```bash
+# get the code
 git clone https://github.com/elmojones3/diamond.git
+
+# navigate to it
 cd diamond
-pnpm install        # installs dependencies and builds
-pnpm link --global  # makes `diamond` available globally
+
+# install dependencies
+pnpm install
+
+# (optional) makes `diamond` available globally
+pnpm link --global
 
 # Sync a library's docs
 diamond sync https://mswjs.io/docs --key msw --recursive
