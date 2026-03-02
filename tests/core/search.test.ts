@@ -103,5 +103,4 @@ describe('SearchService', () => {
     expect(results.length).toBe(1);
     expect(results[0].title).toBe('Second');
   });
-
 });
