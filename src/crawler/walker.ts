@@ -76,6 +76,10 @@ export class WalkerService {
         // Filter 1: same origin (e.g. no links to GitHub or external APIs)
         // Filter 2: within the scope prefix (no blog, no homepage, etc.)
         if (url.origin === root.origin && url.pathname.startsWith(scopePrefix)) {
+          // Skip raw markdown source URLs — they're never rendered documentation pages
+          // and produce .md.md storage paths when the path appends .md to them.
+          if (url.pathname.endsWith('.md')) continue;
+
           // Normalize to a canonical form:
           //   - Drop hash fragments (#section) — we want the page, not the anchor
           //   - Drop trailing slashes — /docs/ and /docs are the same page

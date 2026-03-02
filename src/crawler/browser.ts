@@ -13,45 +13,68 @@
  * tabs are created and disposed by the caller.
  */
 
-import { type Browser, chromium, type Page } from 'playwright';
+import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
 
 export class BrowserService {
   private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
 
-  /** Launch the headless Chromium browser. Call once before crawling. */
+  /** Launch the headless Chromium browser and set up a shared context with asset blocking. */
   async init() {
     this.browser = await chromium.launch({ headless: true });
+    this.context = await this.browser.newContext();
+
+    // Block asset types that contribute nothing to text extraction.
+    // This eliminates network wait time for images, fonts, and stylesheets.
+    await this.context.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+        return route.abort();
+      }
+      return route.continue();
+    });
   }
 
   /** Gracefully shut down the browser and release all resources. */
   async close() {
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
     if (this.browser) {
       await this.browser.close();
+      this.browser = null;
     }
   }
 
   /**
-   * Open a new browser tab, navigate to `url`, and wait for it to fully settle.
+   * Open a new browser tab, navigate to `url`, and wait for content to be ready.
    *
-   * We use two wait conditions in sequence:
+   * Strategy:
+   *   1. Navigate with `domcontentloaded` — fast; heavy assets are already blocked
+   *      so `load` would never fire cleanly anyway.
    *
-   *   1. `networkidle` — Playwright considers the page "idle" once there have
-   *      been no more than 2 in-flight network requests for at least 500ms.
-   *      This catches most SPA hydration patterns where the framework fires
-   *      XHR/fetch calls on mount to populate the page with content.
-   *
-   *   2. `domcontentloaded` — a belt-and-suspenders check that the initial
-   *      HTML document has been parsed. In practice networkidle implies this,
-   *      but waiting for it explicitly ensures consistent behavior.
+   *   2. Wait for a content selector to appear in the DOM — proceeds the instant
+   *      content is available, not after a fixed penalty. Falls back gracefully
+   *      if no matching selector is found within 3 seconds.
    *
    * The caller is responsible for closing the returned Page when done.
    */
   async getPage(url: string): Promise<Page> {
-    if (!this.browser) throw new Error('Browser not initialized. Call init() first.');
+    if (!this.context) throw new Error('Browser not initialized. Call init() first.');
 
-    const page = await this.browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForLoadState('domcontentloaded');
+    const page = await this.context.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    // Wait for content to appear in the DOM rather than sleeping a fixed amount.
+    try {
+      await page.waitForSelector(
+        'main, article, [role="main"], .markdown, .theme-doc-markdown, .markdown-body, .content',
+        { state: 'attached', timeout: 3000 },
+      );
+    } catch {
+      // Selector not found — proceed with whatever has rendered.
+    }
 
     return page;
   }
@@ -62,49 +85,33 @@ export class BrowserService {
    * The problem: documentation frameworks like Docusaurus and Starlight
    * render "tabbed" code blocks where only the active tab's content is visible
    * in the DOM at any given moment. If we capture the HTML without clicking
-   * through each tab, we lose the hidden variants — for example, a code
-   * example that shows both a JavaScript and TypeScript version would only
-   * capture whichever tab was open by default.
+   * through each tab, we lose the hidden variants.
    *
-   * The solution: we locate all elements that look like tab triggers using a
-   * set of well-known CSS selectors, then click each one that isn't already
-   * active. A short 200ms pause after each click lets the framework swap in
-   * the new content before we move on.
-   *
-   * Failures on individual tabs are silently ignored — a tab that can't be
-   * clicked (hidden, outside viewport, etc.) shouldn't abort the whole page.
+   * This runs the entire tab-click loop inside the browser process via
+   * page.evaluate(), eliminating Node↔browser IPC round-trips.
    */
   async revealAllContent(page: Page) {
-    // These selectors cover the most common documentation framework patterns:
-    //   [role="tab"]           — standard ARIA tab widget (used by many frameworks)
-    //   .tabs__item            — Docusaurus tab items
-    //   button[class*="tabs"]  — generic button-based tabs
-    //   .tab-item              — Starlight and others
-    const tabSelectors = ['[role="tab"]', '.tabs__item', 'button[class*="tabs"]', '.tab-item'];
+    await page.evaluate(async () => {
+      const tabSelectors = ['[role="tab"]', '.tabs__item', 'button[class*="tabs"]', '.tab-item'];
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    for (const selector of tabSelectors) {
-      const tabs = await page.$$(selector);
-      for (const tab of tabs) {
-        try {
-          // Check all the common "already active" signals before clicking —
-          // clicking an active tab is harmless but can trigger unnecessary
-          // re-renders and slow us down.
-          const isSelected = (await tab.getAttribute('aria-selected')) === 'true';
-          const isPressed = (await tab.getAttribute('aria-pressed')) === 'true';
-          const hasActiveClass = await tab.evaluate(
-            (el) => el.classList.contains('active') || el.classList.contains('selected'),
-          );
+      for (const selector of tabSelectors) {
+        const tabs = document.querySelectorAll<HTMLElement>(selector);
+        for (const tab of tabs) {
+          try {
+            const isSelected = tab.getAttribute('aria-selected') === 'true';
+            const isPressed = tab.getAttribute('aria-pressed') === 'true';
+            const hasActiveClass = tab.classList.contains('active') || tab.classList.contains('selected');
 
-          if (!isSelected && !isPressed && !hasActiveClass) {
-            await tab.click({ timeout: 1000 });
-            // Brief pause for the framework to swap in the new panel content.
-            await page.waitForTimeout(200);
+            if (!isSelected && !isPressed && !hasActiveClass) {
+              tab.click();
+              await sleep(50);
+            }
+          } catch {
+            // Individual tab click failures are expected — ignore and move on.
           }
-        } catch (_e) {
-          // Individual tab click failures are expected (off-screen elements,
-          // disabled tabs, etc.) — ignore and move on.
         }
       }
-    }
+    });
   }
 }

@@ -114,10 +114,11 @@ export class McpServer {
           limit: z.number().optional(),
           description: z.string().optional(),
           version: z.string().optional(),
+          ignoreRobots: z.boolean().optional().describe('Ignore robots.txt restrictions (for personal offline use)'),
         },
       },
-      async ({ lib, url, recursive, limit, description, version }) => {
-        await syncCommand(url, { key: lib, recursive, limit, description, version });
+      async ({ lib, url, recursive, limit, description, version, ignoreRobots }) => {
+        await syncCommand(url, { key: lib, recursive, limit, description, version, ignoreRobots });
         return { content: [{ type: 'text' as const, text: `Successfully synced ${lib}` }] };
       },
     );
@@ -125,7 +126,10 @@ export class McpServer {
     this.mcp.registerTool(
       'search_library',
       {
-        description: "Full-text search across a library's stored documentation.",
+        description:
+          "Full-text keyword search across a library's stored documentation. " +
+          'This is the primary and recommended search interface — use it for most queries. ' +
+          'Keyword search (MiniSearch) is always available immediately after a sync_docs call.',
         inputSchema: {
           lib: z.string().describe('The library id to search'),
           query: z.string().describe('Keywords to search for'),

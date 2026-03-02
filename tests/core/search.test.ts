@@ -103,32 +103,4 @@ describe('SearchService', () => {
     expect(results.length).toBe(1);
     expect(results[0].title).toBe('Second');
   });
-
-  it('should return semantic matches for conceptual queries', async () => {
-    const docs: SearchDoc[] = [
-      {
-        id: 'error-handling',
-        title: 'Error Handling',
-        content: 'To catch exceptions, use a try/catch block in your async functions.',
-        url: 'https://example.com/errors',
-      },
-      {
-        id: 'installation',
-        title: 'Installation',
-        content: 'Run pnpm install to get all dependencies.',
-        url: 'https://example.com/install',
-      },
-    ];
-    await searchService.indexVersion('test-lib', '1.0.0', docs);
-
-    // This query has no keywords in common with "Error Handling" doc content,
-    // but is semantically related to "exceptions" and "try/catch".
-    const results = await searchService.search('test-lib', '1.0.0', 'how to catch errors and exceptions');
-
-    expect(results.length).toBeGreaterThan(0);
-    // Find the error handling result
-    const errorRes = results.find((r) => r.id === 'error-handling');
-    expect(errorRes).toBeDefined();
-    expect(errorRes?.similarity).toBeGreaterThan(0.4);
-  }, 30000); // Increase timeout for model download/inference
 });

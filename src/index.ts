@@ -56,7 +56,7 @@ program
   .option('--key <name>', 'Subdirectory name for the output (e.g. "msw")', 'docs')
   .option('--recursive', 'Follow internal links to crawl sub-pages', false)
   .option('--depth <number>', 'Maximum link-follow depth (not yet enforced)', '2')
-  .option('--concurrency <number>', 'Pages to process simultaneously', '5')
+  .option('--concurrency <number>', 'Pages to process simultaneously', '10')
   .option('--limit <number>', 'Stop after this many pages (useful for testing)')
   .action(async (url, outDir, options) => {
     try {
@@ -84,9 +84,10 @@ program
   .option('--key <name>', 'Library identifier in the registry (e.g. "msw")', 'docs')
   .option('--ver <string>', 'Pin a specific version (default: auto-detect)', 'latest')
   .option('--recursive', 'Follow internal links to crawl sub-pages', false)
-  .option('--concurrency <number>', 'Pages to process simultaneously', '5')
+  .option('--concurrency <number>', 'Pages to process simultaneously', '10')
   .option('--limit <number>', 'Stop after this many pages')
   .option('--description <text>', 'Short description of the library')
+  .option('--ignore-robots', 'Ignore robots.txt restrictions (for personal offline use)', false)
   .action(async (url, options) => {
     console.warn(`Entering sync command for ${url}...`);
     try {
@@ -97,7 +98,12 @@ program
         concurrency: parseInt(options.concurrency, 10),
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         description: options.description,
+        ignoreRobots: options.ignoreRobots,
       });
+      // Exit immediately — don't wait for the background vector build that
+      // syncCommand fires.  Vectors complete naturally inside `diamond serve`
+      // (the long-running MCP server process).
+      process.exit(0);
     } catch (e) {
       console.error('Fatal error during sync:', e);
       process.exit(1);
