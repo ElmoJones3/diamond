@@ -46,6 +46,8 @@ export interface SyncCommandOptions {
   limit?: number;
   /** A short human-readable description of the library (e.g. "API mocking library for browser and Node.js"). */
   description?: string;
+  /** Skip robots.txt enforcement. Some sites disallow crawlers but are fine with personal offline use. */
+  ignoreRobots?: boolean;
 }
 
 export async function syncCommand(url: string, options: SyncCommandOptions) {
@@ -74,6 +76,7 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     recursive: options.recursive,
     concurrency: options.concurrency,
     limit: options.limit,
+    ignoreRobots: options.ignoreRobots,
   });
 
   if (results.length === 0) {
@@ -117,21 +120,18 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
   // -------------------------------------------------------------------------
   // Stage 4: Search Index
   //
-  // Build and persist a MiniSearch index for this version so the AI can
-  // search by keyword without reading every Markdown file. The index is
-  // stored at `storage/{libId}/{version}/search-index.json`.
+  // Build and persist a MiniSearch keyword index — fast, always awaited.
+  // The library is fully searchable via search_library as soon as this returns.
   // -------------------------------------------------------------------------
-  console.warn('Building search index...');
-  await search.indexVersion(
-    libId,
-    version,
-    results.map((r) => ({
-      id: r.path,
-      title: r.title,
-      content: r.content,
-      url: r.url,
-    })),
-  );
+  const searchDocs = results.map((r) => ({
+    id: r.path,
+    title: r.title,
+    content: r.content,
+    url: r.url,
+  }));
+
+  console.warn('Building keyword index...');
+  await search.indexVersion(libId, version, searchDocs);
 
   // -------------------------------------------------------------------------
   // Stage 5: Registry Update

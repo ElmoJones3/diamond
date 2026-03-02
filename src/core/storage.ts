@@ -19,14 +19,8 @@ export class StorageManager {
   async createVersion(libId: string, version: string, files: { path: string; content: string }[]): Promise<void> {
     const versionDir = path.join(Env.storageDir, libId, version);
 
-    // Remove the path if it exists (directory, file, or symlink)
-    // We use try/catch because pathExists doesn't always handle broken symlinks well
-    try {
-      await fs.remove(versionDir);
-    } catch (_e) {
-      // Ignore errors if path doesn't exist
-    }
-
+    // Clear the version directory so stale files from a previous sync are removed.
+    await fs.remove(versionDir);
     await fs.ensureDir(versionDir);
 
     for (const file of files) {

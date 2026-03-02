@@ -46,6 +46,12 @@ export interface CrawlOptions {
   concurrency?: number;
   /** Stop after visiting this many pages (useful for large doc sites during testing). */
   limit?: number;
+  /**
+   * Skip robots.txt enforcement entirely.
+   * Some sites (e.g. TanStack) disallow crawlers in robots.txt but are fine
+   * with personal, offline use. Set this to true to proceed regardless.
+   */
+  ignoreRobots?: boolean;
 }
 
 /** The normalized output for a single crawled page. */
@@ -75,14 +81,16 @@ export class CrawlerService {
   private discovery = new DiscoveryService();
 
   async crawl(options: CrawlOptions): Promise<CrawlResult[]> {
-    const { url, recursive, concurrency = 5, limit } = options;
+    const { url, recursive, concurrency = 10, limit, ignoreRobots } = options;
     const results: CrawlResult[] = [];
     const visited = new Set<string>();
     const queue: string[] = [url];
 
     try {
       await this.browser.init();
-      const robots = await this.discovery.getRobotsParser(url);
+      const robots = ignoreRobots
+        ? { isAllowed: () => true, getSitemaps: () => [] }
+        : await this.discovery.getRobotsParser(url);
       const userAgent = 'DiamondCrawler';
 
       // Phase 1: Sitemap Discovery
@@ -111,66 +119,58 @@ export class CrawlerService {
         }
       }
 
-      // Phase 2: Parallel Worker Loop
-      const workers = Array.from({ length: concurrency }, () =>
-        this.runWorker({
-          queue,
-          visited,
-          limit,
-          robots,
-          userAgent,
-          url,
-          recursive,
-          results,
-        }),
-      );
-      await Promise.all(workers);
+      // Phase 2: Batch-parallel crawl loop.
+      //
+      // The previous worker-pool approach had a race condition: all workers
+      // start simultaneously but the queue only has 1 URL at that point, so
+      // (concurrency - 1) workers see an empty queue and exit immediately,
+      // leaving a single worker processing everything serially.
+      //
+      // This batch loop fixes that: we dequeue up to `concurrency` URLs,
+      // mark them visited, fire them all in parallel, collect any newly
+      // discovered links into the queue, then repeat — guaranteeing full
+      // concurrency at every step.
+      while (queue.length > 0 && !(limit && visited.size >= limit)) {
+        // Drain up to `concurrency` valid, unvisited, allowed URLs.
+        const batch: string[] = [];
+        while (batch.length < concurrency && queue.length > 0) {
+          if (limit && visited.size + batch.length >= limit) break;
+          const next = queue.shift()!;
+          if (visited.has(next) || !robots.isAllowed(next, userAgent)) continue;
+          visited.add(next);
+          batch.push(next);
+        }
+
+        if (batch.length === 0) break;
+
+        for (const u of batch) {
+          console.warn(`Crawling [${visited.size}/${limit ?? '?'}]: ${u}...`);
+        }
+
+        const batchResults = await Promise.all(
+          batch.map((u) =>
+            this.crawlSinglePage(u, {
+              recursive,
+              rootUrl: url,
+              robots,
+              userAgent,
+              queue,
+              visited,
+            }).catch((e) => {
+              console.error(`Failed to crawl ${u}:`, e);
+              return null;
+            }),
+          ),
+        );
+
+        for (const r of batchResults) {
+          if (r) results.push(r);
+        }
+      }
 
       return results;
     } finally {
       await this.browser.close();
-    }
-  }
-
-  private async runWorker(context: {
-    queue: string[];
-    visited: Set<string>;
-    limit?: number;
-    robots: RobotsParser;
-    userAgent: string;
-    url: string;
-    recursive?: boolean;
-    results: CrawlResult[];
-  }) {
-    while (context.queue.length > 0) {
-      if (context.limit && context.visited.size >= context.limit) break;
-
-      const currentUrl = context.queue.shift();
-      if (!currentUrl || context.visited.has(currentUrl)) continue;
-
-      if (!context.robots.isAllowed(currentUrl, context.userAgent)) {
-        console.warn(`Skipping disallowed URL: ${currentUrl}`);
-        continue;
-      }
-
-      context.visited.add(currentUrl);
-      console.warn(
-        `Crawling [${context.visited.size}/${context.limit || context.queue.length + context.visited.size}]: ${currentUrl}...`,
-      );
-
-      try {
-        const result = await this.crawlSinglePage(currentUrl, {
-          recursive: context.recursive,
-          rootUrl: context.url,
-          robots: context.robots,
-          userAgent: context.userAgent,
-          queue: context.queue,
-          visited: context.visited,
-        });
-        if (result) context.results.push(result);
-      } catch (e) {
-        console.error(`Failed to crawl ${currentUrl}:`, e);
-      }
     }
   }
 
