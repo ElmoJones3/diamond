@@ -7,11 +7,12 @@
     "diamond": "./dist/index.js"
   },
   "scripts": {
-    "prepare": "tsc && simple-git-hooks",
-    "build": "tsc",
-    "watch": "tsc -w",
+    "prepare": "tsc -p tsconfig.build.json && simple-git-hooks",
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json -w",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "format:all": "biome check --write --unsafe .",
     "test": "vitest run",
     "start": "node dist/index.js"
   },

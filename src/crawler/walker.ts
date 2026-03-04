@@ -82,10 +82,7 @@ export class WalkerService {
     }
 
     const result = Array.from(uniqueUrls);
-    log.trace(
-      { total: links.length, afterOriginFilter, afterScopeFilter: result.length },
-      'walker:links_found',
-    );
+    log.trace({ total: links.length, afterOriginFilter, afterScopeFilter: result.length }, 'walker:links_found');
 
     return result;
   }

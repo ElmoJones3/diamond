@@ -1,8 +1,8 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { Env } from '#src/core/env.js';
-import { getLogger } from '#src/logger.js';
 import { RegistryManager } from '#src/core/registry.js';
+import { getLogger } from '#src/logger.js';
 
 /**
  * Remove an entry from Diamond's registry.
