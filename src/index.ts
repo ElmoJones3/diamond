@@ -20,11 +20,12 @@
  * All commands are thin wrappers — they parse arguments and delegate to the
  * implementation in `src/cli/` or `src/mcp/`. The actual logic lives there.
  *
- * Note on console.warn vs console.log:
+ * Note on stderr output:
  *   When running as an MCP server, stdout is the JSON-RPC transport channel.
  *   Writing anything else to stdout will corrupt the protocol stream. All
- *   human-readable output (progress, errors) therefore goes to stderr via
- *   `console.warn` / `console.error`, which is safe in both CLI and MCP mode.
+ *   human-readable output (progress, errors) therefore goes to stderr, which
+ *   is safe in both CLI and MCP mode. The logger is configured to write to
+ *   stderr (and a JSONL log file) — never stdout.
  */
 
 import { Command } from 'commander';
@@ -36,6 +37,7 @@ import { removeCommand } from '#src/cli/remove.js';
 import { addRepoCommand } from '#src/cli/repo.js';
 import { syncCommand } from '#src/cli/sync.js';
 import { watchCommand } from '#src/cli/watch.js';
+import { initLogger, getLogger } from '#src/logger.js';
 import { McpServer } from '#src/mcp/server.js';
 
 const program = new Command();
@@ -43,7 +45,9 @@ const program = new Command();
 program
   .name('diamond')
   .description('Documentation registry and MCP server — sync docs once, read them offline forever.')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('-v, --verbose', 'Enable trace-level logging (all debug output)', false)
+  .option('--log-file <path>', 'Write structured JSONL logs to this file (overrides DIAMOND_LOG_FILE env var)');
 
 // -----------------------------------------------------------------------------
 // crawl — one-shot crawl without touching the global registry
@@ -59,6 +63,7 @@ program
   .option('--concurrency <number>', 'Pages to process simultaneously', '10')
   .option('--limit <number>', 'Stop after this many pages (useful for testing)')
   .action(async (url, outDir, options) => {
+    const log = getLogger().child({ component: 'cli:crawl' });
     try {
       await crawlCommand(url, {
         key: options.key,
@@ -69,7 +74,7 @@ program
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
       });
     } catch (e) {
-      console.error('Fatal error during crawl:', e);
+      log.error({ err: e }, 'Fatal error during crawl');
       process.exit(1);
     }
   });
@@ -89,7 +94,7 @@ program
   .option('--description <text>', 'Short description of the library')
   .option('--ignore-robots', 'Ignore robots.txt restrictions (for personal offline use)', false)
   .action(async (url, options) => {
-    console.warn(`Entering sync command for ${url}...`);
+    const log = getLogger().child({ component: 'cli:sync' });
     try {
       await syncCommand(url, {
         key: options.key,
@@ -105,7 +110,7 @@ program
       // (the long-running MCP server process).
       process.exit(0);
     } catch (e) {
-      console.error('Fatal error during sync:', e);
+      log.error({ err: e }, 'Fatal error during sync');
       process.exit(1);
     }
   });
@@ -117,11 +122,12 @@ program
   .command('serve')
   .description('Start the Diamond MCP server (connect via Claude Desktop, Cursor, etc.)')
   .action(async () => {
+    const log = getLogger().child({ component: 'cli:serve' });
     try {
       const server = new McpServer();
       await server.run();
     } catch (e) {
-      console.error('Fatal error in MCP server:', e);
+      log.error({ err: e }, 'Fatal error in MCP server');
       process.exit(1);
     }
   });
@@ -137,6 +143,7 @@ program
   .option('--cursor', 'Install into Cursor (~/.cursor/mcp.json)')
   .option('--gemini-cli', 'Install into Gemini CLI (~/.gemini/settings.json)')
   .action(async (options) => {
+    const log = getLogger().child({ component: 'cli:install' });
     const targets: string[] = [];
     if (options.claudeCode) targets.push('claude-code');
     if (options.claudeDesktop) targets.push('claude-desktop');
@@ -144,19 +151,20 @@ program
     if (options.geminiCli) targets.push('gemini-cli');
 
     if (targets.length === 0) {
-      console.warn('Specify one or more targets:\n');
-      console.warn('  diamond install --claude-code');
-      console.warn('  diamond install --claude-desktop');
-      console.warn('  diamond install --cursor');
-      console.warn('  diamond install --gemini-cli');
-      console.warn('\nFlags can be combined: diamond install --claude-code --gemini-cli');
+      log.warn('No install targets specified');
+      process.stderr.write('Specify one or more targets:\n\n');
+      process.stderr.write('  diamond install --claude-code\n');
+      process.stderr.write('  diamond install --claude-desktop\n');
+      process.stderr.write('  diamond install --cursor\n');
+      process.stderr.write('  diamond install --gemini-cli\n');
+      process.stderr.write('\nFlags can be combined: diamond install --claude-code --gemini-cli\n');
       process.exit(0);
     }
 
     try {
       await installCommand({ targets });
     } catch (e) {
-      console.error('Fatal error during install:', e);
+      log.error({ err: e }, 'Fatal error during install');
       process.exit(1);
     }
   });
@@ -169,10 +177,11 @@ program
   .description('Remove a library or repository from the Diamond registry')
   .argument('<id>', 'The registry id to remove (e.g. "msw" or "diamond-core")')
   .action(async (id) => {
+    const log = getLogger().child({ component: 'cli:remove' });
     try {
       await removeCommand(id);
     } catch (e) {
-      console.error('Fatal error removing entry:', e);
+      log.error({ err: e }, 'Fatal error removing entry');
       process.exit(1);
     }
   });
@@ -184,10 +193,11 @@ program
   .command('gc')
   .description('Remove orphaned blobs from the content-addressable store to reclaim disk space')
   .action(async () => {
+    const log = getLogger().child({ component: 'cli:gc' });
     try {
       await gcCommand();
     } catch (e) {
-      console.error('Fatal error during gc:', e);
+      log.error({ err: e }, 'Fatal error during gc');
       process.exit(1);
     }
   });
@@ -199,10 +209,11 @@ program
   .command('watch')
   .description('Watch registered local repositories for changes and update search indices in real-time')
   .action(async () => {
+    const log = getLogger().child({ component: 'cli:watch' });
     try {
       await watchCommand();
     } catch (e) {
-      console.error('Fatal error during watch:', e);
+      log.error({ err: e }, 'Fatal error during watch');
       process.exit(1);
     }
   });
@@ -217,10 +228,11 @@ repo
   .description('Remove a repository from the Diamond registry')
   .argument('<id>', 'Registry identifier to remove')
   .action(async (id) => {
+    const log = getLogger().child({ component: 'cli:repo' });
     try {
       await removeCommand(id);
     } catch (e) {
-      console.error('Fatal error removing repo:', e);
+      log.error({ err: e }, 'Fatal error removing repo');
       process.exit(1);
     }
   });
@@ -232,12 +244,22 @@ repo
   .option('--key <name>', 'Registry identifier (defaults to the directory name)')
   .option('--description <text>', 'Short description of the repository')
   .action(async (repoPath, options) => {
+    const log = getLogger().child({ component: 'cli:repo' });
     try {
       await addRepoCommand(repoPath, options);
     } catch (e) {
-      console.error('Fatal error adding repo:', e);
+      log.error({ err: e }, 'Fatal error adding repo');
       process.exit(1);
     }
   });
+
+// Initialize logger before parsing — this ensures the singleton is ready
+// before any command action fires. The --verbose and --log-file options are
+// parsed from process.argv directly since Commander hasn't parsed yet.
+const verboseFlag = process.argv.includes('--verbose') || process.argv.includes('-v');
+const logFileIdx = process.argv.findIndex((a) => a === '--log-file');
+const logFileArg = logFileIdx !== -1 ? process.argv[logFileIdx + 1] : undefined;
+const level = verboseFlag ? 'trace' : (process.env.LOG_LEVEL ?? 'info');
+initLogger(level, logFileArg);
 
 program.parse(process.argv);

@@ -19,6 +19,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { getLogger } from '#src/logger.js';
 
 type McpServerEntry = {
   command: string;
@@ -52,12 +53,6 @@ function writeJson(filePath: string, data: unknown): void {
 
 // ─── Per-target installers ────────────────────────────────────────────────────
 
-/**
- * Claude Code — user-scope MCP server stored in ~/.claude.json.
- *
- * Claude Code reads a top-level `mcpServers` map from ~/.claude.json for
- * servers that should be available across all projects (user scope).
- */
 function installClaudeCode(entry: McpServerEntry): string {
   const configPath = path.join(os.homedir(), '.claude.json');
   const config = readJson(configPath);
@@ -70,15 +65,6 @@ function installClaudeCode(entry: McpServerEntry): string {
   return configPath;
 }
 
-/**
- * Claude Desktop — standard MCP host config.
- *
- * macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
- * Linux: ~/.config/Claude/claude_desktop_config.json
- * Windows: %APPDATA%\Claude\claude_desktop_config.json
- *
- * Claude Desktop must be fully quit and restarted after editing this file.
- */
 function claudeDesktopConfigPath(): string {
   if (process.platform === 'win32') {
     return path.join(process.env.APPDATA ?? os.homedir(), 'Claude', 'claude_desktop_config.json');
@@ -86,7 +72,6 @@ function claudeDesktopConfigPath(): string {
   if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
   }
-  // Linux / other
   return path.join(
     process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'),
     'Claude',
@@ -106,12 +91,6 @@ function installClaudeDesktop(entry: McpServerEntry): string {
   return configPath;
 }
 
-/**
- * Cursor — MCP host config at ~/.cursor/mcp.json.
- *
- * Cursor reads this file on startup. Restart Cursor (or reload MCP servers
- * via the command palette) after editing.
- */
 function installCursor(entry: McpServerEntry): string {
   const configPath = path.join(os.homedir(), '.cursor', 'mcp.json');
   const config = readJson(configPath);
@@ -124,9 +103,6 @@ function installCursor(entry: McpServerEntry): string {
   return configPath;
 }
 
-/**
- * Gemini CLI — MCP host config at ~/.gemini/settings.json.
- */
 function installGemini(entry: McpServerEntry): string {
   const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
   const config = readJson(configPath);
@@ -177,37 +153,37 @@ const TARGETS: Target[] = [
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function installCommand(options: { targets: string[] }) {
+  const log = getLogger().child({ component: 'cli:install' });
   const diamondBin = resolveDiamondBin();
   const entry: McpServerEntry = { command: diamondBin, args: ['serve'] };
 
-  // If the user passed specific --target flags, filter to just those.
-  // Otherwise install into all known targets.
   const activeTargets = options.targets.length > 0 ? TARGETS.filter((t) => options.targets.includes(t.flag)) : TARGETS;
 
-  console.warn(`\nDiamond install — binary: ${diamondBin}\n`);
+  log.info({ diamondBin, targets: activeTargets.map((t) => t.flag) }, 'install:start');
 
   if (diamondBin.includes('/.nvm/versions/') || diamondBin.includes('/.fnm/node-versions/')) {
-    console.warn(
-      '  ⚠  Binary is inside an nvm/fnm versioned path. If you switch Node versions, re-run `diamond install` to update the entry.\n',
+    log.warn({ diamondBin }, 'install:versioned_path');
+    process.stderr.write(
+      '  ⚠  Binary is inside an nvm/fnm versioned path. If you switch Node versions, re-run `diamond install` to update the entry.\n\n',
     );
   }
 
   for (const target of activeTargets) {
     try {
       const configPath = target.install(entry);
-      console.warn(`  ✓  ${target.name}`);
-      console.warn(`     Written to: ${configPath}`);
+      log.info({ target: target.flag, configPath }, 'install:target_ok');
+      process.stderr.write(`  ✓  ${target.name}\n`);
+      process.stderr.write(`     Written to: ${configPath}\n`);
       if (target.restartNote) {
-        console.warn(`     Note: ${target.restartNote}`);
+        process.stderr.write(`     Note: ${target.restartNote}\n`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`  ✗  ${target.name} — failed: ${msg}`);
+      log.warn({ target: target.flag, err }, 'install:target_fail');
+      process.stderr.write(`  ✗  ${target.name} — failed: ${msg}\n`);
     }
-    console.warn('');
+    process.stderr.write('\n');
   }
 
-  console.warn('Done. Diamond MCP server entry:');
-  console.warn(`  command: ${entry.command}`);
-  console.warn(`  args:    ${entry.args.join(' ')}`);
+  log.info({ diamondBin }, 'install:complete');
 }

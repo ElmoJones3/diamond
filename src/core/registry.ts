@@ -24,13 +24,10 @@
 import fs from 'fs-extra';
 import { z } from 'zod';
 import { Env } from '#src/core/env.js';
+import { getLogger } from '#src/logger.js';
 
 // ---------------------------------------------------------------------------
 // Schema
-//
-// We use a Zod discriminated union keyed on `type` — Zod will pick the right
-// schema based on whether `type` is "docs" or "repo", and give precise error
-// messages if fields are wrong or missing.
 // ---------------------------------------------------------------------------
 
 export const RegistryEntrySchema = z.discriminatedUnion('type', [
@@ -39,17 +36,11 @@ export const RegistryEntrySchema = z.discriminatedUnion('type', [
     type: z.literal('docs'),
     name: z.string(),
     homepage: z.string().optional(),
-    /** A short human-readable description of the library, optionally supplied at sync time. */
     description: z.string().optional(),
-    /**
-     * A map of version string → sync metadata.
-     * The keys are semver strings (e.g. "2.12.10") or "latest".
-     * The value records when that version was last synced.
-     */
     versions: z.record(
       z.string(),
       z.object({
-        syncedAt: z.string(), // ISO 8601 timestamp
+        syncedAt: z.string(),
       }),
     ),
   }),
@@ -57,26 +48,20 @@ export const RegistryEntrySchema = z.discriminatedUnion('type', [
     id: z.string(),
     type: z.literal('repo'),
     name: z.string(),
-    /** Absolute path to the repository on the local filesystem. */
     localPath: z.string(),
-    /** A short human-readable description of the repository, optionally supplied at registration time. */
     description: z.string().optional(),
     config: z.object({
       syncStrategy: z.literal('git'),
-      /** The branch to pull from when auto-syncing. */
       branch: z.string().optional(),
-      /** Whether to run `git pull` automatically before serving files. */
       autoPull: z.boolean().default(true),
     }),
-    syncedAt: z.string(), // ISO 8601 timestamp
+    syncedAt: z.string(),
   }),
 ]);
 
 export type RegistryEntry = z.infer<typeof RegistryEntrySchema>;
 
 export class RegistryManager {
-  // Entries are keyed by their `id` for O(1) lookup. The in-memory store is
-  // populated lazily by `init()` and kept in sync by `save()`.
   private entries: Map<string, RegistryEntry> = new Map();
 
   /**
@@ -85,29 +70,24 @@ export class RegistryManager {
    * Safe to call multiple times — if the registry file doesn't exist yet
    * (first run), the manager starts empty. If parsing fails, the error is
    * logged and the manager starts empty rather than crashing.
-   *
-   * Call this before any read or write operation that depends on up-to-date
-   * registry state.
    */
   async init() {
+    const log = getLogger().child({ component: 'core:RegistryManager' });
+
     if (await fs.pathExists(Env.registryPath)) {
       try {
         const data = await fs.readJson(Env.registryPath);
-        // Validate the entire file as a record of id → entry.
-        // Zod throws a descriptive error if any entry doesn't match the schema.
         const parsed = z.record(z.string(), RegistryEntrySchema).parse(data);
         this.entries = new Map(Object.entries(parsed));
+        log.debug({ entryCount: this.entries.size }, 'registry:loaded');
       } catch (e) {
-        console.error('Failed to parse registry.json:', e);
+        log.error({ err: e }, 'registry:parse_fail');
       }
     }
   }
 
   /**
    * Persist the current in-memory registry to disk.
-   *
-   * Serializes the Map to a plain object (since JSON doesn't support Maps)
-   * and writes it as pretty-printed JSON for human readability.
    */
   async save() {
     await fs.ensureDir(Env.configDir);
@@ -127,9 +107,6 @@ export class RegistryManager {
 
   /**
    * Add or replace an entry in the registry and immediately persist to disk.
-   *
-   * If an entry with the same `id` already exists, it is overwritten — this
-   * is the intended behavior for re-syncing an existing library.
    */
   async addEntry(entry: RegistryEntry) {
     this.entries.set(entry.id, entry);

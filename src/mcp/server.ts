@@ -17,6 +17,7 @@ import { syncCommand } from '#src/cli/sync.js';
 import { RegistryManager } from '#src/core/registry.js';
 import { SearchService } from '#src/core/search.js';
 import { StorageManager } from '#src/core/storage.js';
+import { getLogger } from '#src/logger.js';
 
 export class McpServer {
   private mcp: SdkMcpServer;
@@ -118,7 +119,12 @@ export class McpServer {
         },
       },
       async ({ lib, url, recursive, limit, description, version, ignoreRobots }) => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'sync_docs', correlationId, lib, url }, 'mcp:tool_call');
         await syncCommand(url, { key: lib, recursive, limit, description, version, ignoreRobots });
+        log.info({ tool: 'sync_docs', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return { content: [{ type: 'text' as const, text: `Successfully synced ${lib}` }] };
       },
     );
@@ -137,9 +143,14 @@ export class McpServer {
         },
       },
       async ({ lib, query, version }) => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'search_library', correlationId, lib, query }, 'mcp:tool_call');
         await this.registry.init();
         const entry = this.registry.getEntry(lib);
         const results = await this.search.search(lib, version || 'latest', query);
+        log.info({ tool: 'search_library', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return {
           content: [
             {
@@ -166,7 +177,12 @@ export class McpServer {
         inputSchema: { id: z.string().describe('The registry id to remove') },
       },
       async ({ id }) => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'remove_library', correlationId, id }, 'mcp:tool_call');
         await removeCommand(id);
+        log.info({ tool: 'remove_library', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return { content: [{ type: 'text' as const, text: `Successfully removed "${id}" from registry` }] };
       },
     );
@@ -181,10 +197,15 @@ export class McpServer {
         },
       },
       async ({ id, description }) => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'describe_library', correlationId, id }, 'mcp:tool_call');
         await this.registry.init();
         const entry = this.registry.getEntry(id);
         if (!entry) throw new Error(`No registry entry found with id "${id}"`);
         await this.registry.addEntry({ ...entry, description });
+        log.info({ tool: 'describe_library', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return { content: [{ type: 'text' as const, text: `Updated description for "${id}"` }] };
       },
     );
@@ -199,6 +220,10 @@ export class McpServer {
         },
       },
       async ({ id, path: subPath }) => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'list_repo_files', correlationId, id }, 'mcp:tool_call');
         await this.registry.init();
         const entry = this.registry.getEntry(id);
         if (entry?.type !== 'repo') throw new Error(`No repo entry found with id "${id}"`);
@@ -209,6 +234,7 @@ export class McpServer {
         files.sort();
 
         const results = files.map((f) => ({ path: f, uri: `repo://${id}/${f}` }));
+        log.info({ tool: 'list_repo_files', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] };
       },
     );
@@ -219,17 +245,23 @@ export class McpServer {
         description: 'List all libraries and repositories tracked by Diamond.',
       },
       async () => {
+        const log = getLogger().child({ component: 'mcp:server' });
+        const correlationId = crypto.randomUUID();
+        const startTime = Date.now();
+        log.info({ tool: 'list_registry', correlationId }, 'mcp:tool_call');
         await this.registry.init();
         const entries = this.registry.listEntries();
+        log.info({ tool: 'list_registry', correlationId, duration_ms: Date.now() - startTime }, 'mcp:tool_result');
         return { content: [{ type: 'text' as const, text: JSON.stringify(entries, null, 2) }] };
       },
     );
   }
 
   async run() {
+    const log = getLogger().child({ component: 'mcp:server' });
     const transport = new StdioServerTransport();
     await this.mcp.connect(transport);
-    console.error('Diamond MCP Server running on stdio');
+    log.debug('mcp:ready');
   }
 
   private async walkRepo(dir: string, localPath: string, files: string[]) {

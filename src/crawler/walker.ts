@@ -15,6 +15,7 @@
  */
 
 import type { Page } from 'playwright';
+import { getLogger } from '#src/logger.js';
 
 export interface WalkOptions {
   /** The root URL of the crawl — defines the scope for link filtering. */
@@ -44,16 +45,9 @@ export class WalkerService {
    * @returns       A deduplicated array of absolute URLs ready for the queue.
    */
   async discoverUrls(page: Page, options: WalkOptions): Promise<string[]> {
+    const log = getLogger().child({ component: 'crawler:WalkerService' });
     const root = new URL(options.rootUrl);
 
-    // Derive the scope prefix from the root URL's pathname.
-    // If the root URL points to a specific "file" rather than a directory,
-    // we step up to its parent so sibling pages are included.
-    //
-    // Examples:
-    //   /docs/       → /docs/          (already a directory — no change)
-    //   /docs/intro  → /docs/          (step up to parent)
-    //   /api/v2/ref  → /api/v2/        (step up to parent)
     let scopePrefix = root.pathname;
     if (!scopePrefix.endsWith('/')) {
       const parts = scopePrefix.split('/');
@@ -63,29 +57,21 @@ export class WalkerService {
       }
     }
 
-    // Run inside the browser context to get resolved absolute URLs.
-    // The browser handles relative → absolute resolution for us.
     const links = await page.$$eval('a', (anchors) => anchors.map((a) => a.href));
 
     const uniqueUrls = new Set<string>();
+    let afterOriginFilter = 0;
 
     for (const link of links) {
       try {
         const url = new URL(link);
 
-        // Filter 1: same origin (e.g. no links to GitHub or external APIs)
-        // Filter 2: within the scope prefix (no blog, no homepage, etc.)
         if (url.origin === root.origin && url.pathname.startsWith(scopePrefix)) {
-          // Skip raw markdown source URLs — they're never rendered documentation pages
-          // and produce .md.md storage paths when the path appends .md to them.
+          afterOriginFilter++;
           if (url.pathname.endsWith('.md')) continue;
 
-          // Normalize to a canonical form:
-          //   - Drop hash fragments (#section) — we want the page, not the anchor
-          //   - Drop trailing slashes — /docs/ and /docs are the same page
           const normalized = url.origin + url.pathname.replace(/\/$/, '');
 
-          // Filter 3: apply caller-supplied allow/deny patterns
           if (this.isAllowed(normalized, options)) {
             uniqueUrls.add(normalized);
           }
@@ -95,18 +81,17 @@ export class WalkerService {
       }
     }
 
-    return Array.from(uniqueUrls);
+    const result = Array.from(uniqueUrls);
+    log.trace(
+      { total: links.length, afterOriginFilter, afterScopeFilter: result.length },
+      'walker:links_found',
+    );
+
+    return result;
   }
 
   /**
    * Apply the exclude/include pattern filters.
-   *
-   * Logic:
-   *   - If the URL matches any excludePattern → reject (return false).
-   *   - If includePatterns are provided and the URL doesn't match any → reject.
-   *   - Otherwise → accept.
-   *
-   * This means excludePatterns take priority over includePatterns.
    */
   private isAllowed(url: string, options: WalkOptions): boolean {
     if (options.excludePatterns) {
@@ -119,7 +104,6 @@ export class WalkerService {
       for (const pattern of options.includePatterns) {
         if (new RegExp(pattern).test(url)) return true;
       }
-      // If includePatterns were specified but none matched, reject.
       return false;
     }
 

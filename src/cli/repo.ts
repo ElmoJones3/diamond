@@ -26,6 +26,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { RegistryManager } from '#src/core/registry.js';
 import { SearchService } from '#src/core/search.js';
+import { getLogger } from '#src/logger.js';
 
 /**
  * Register a local git repository in Diamond's registry.
@@ -34,22 +35,16 @@ import { SearchService } from '#src/core/search.js';
  * @param options.key  Optional identifier override. Defaults to the directory name.
  */
 export async function addRepoCommand(localPath: string, options: { key?: string; description?: string }) {
+  const log = getLogger().child({ component: 'cli:repo' });
   const registry = new RegistryManager();
   await registry.init();
 
-  // Resolve to an absolute path so the registry entry works regardless of
-  // what directory Diamond is invoked from in the future.
   const absolutePath = path.resolve(localPath);
 
-  // Validate that this is actually a git repo before registering it.
-  // The `.git` directory is the canonical indicator — we don't attempt to
-  // support bare repositories (no working tree) at this stage.
   if (!(await fs.pathExists(path.join(absolutePath, '.git')))) {
     throw new Error(`The directory '${absolutePath}' is not a git repository.`);
   }
 
-  // If no key is provided, use the directory name as a sensible default.
-  // e.g. registering `/Users/sf/work/my-library` → id "my-library"
   const repoId = options.key || path.basename(absolutePath);
 
   await registry.addEntry({
@@ -65,11 +60,11 @@ export async function addRepoCommand(localPath: string, options: { key?: string;
     syncedAt: new Date().toISOString(),
   });
 
-  // Index the repo immediately so it's searchable
+  log.info({ repoId, localPath: absolutePath }, 'repo:registered');
+
   const search = new SearchService();
-  console.warn(`Indexing repository '${repoId}'...`);
+  log.info({ repoId }, 'repo:indexing');
   await search.indexRepo(repoId, absolutePath);
 
-  console.warn(`\nSuccess! Repository '${repoId}' is now tracked and indexed.`);
-  console.warn(`Local Path: ${absolutePath}`);
+  log.info({ repoId, localPath: absolutePath }, 'repo:complete');
 }

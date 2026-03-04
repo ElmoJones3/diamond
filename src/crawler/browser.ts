@@ -14,6 +14,7 @@
  */
 
 import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
+import { getLogger } from '#src/logger.js';
 
 export class BrowserService {
   private browser: Browser | null = null;
@@ -21,6 +22,8 @@ export class BrowserService {
 
   /** Launch the headless Chromium browser and set up a shared context with asset blocking. */
   async init() {
+    const log = getLogger().child({ component: 'crawler:BrowserService' });
+    log.debug('browser:launch');
     this.browser = await chromium.launch({ headless: true });
     this.context = await this.browser.newContext();
 
@@ -61,12 +64,13 @@ export class BrowserService {
    * The caller is responsible for closing the returned Page when done.
    */
   async getPage(url: string): Promise<Page> {
+    const log = getLogger().child({ component: 'crawler:BrowserService' });
     if (!this.context) throw new Error('Browser not initialized. Call init() first.');
 
+    log.trace({ url }, 'browser:navigate');
     const page = await this.context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Wait for content to appear in the DOM rather than sleeping a fixed amount.
     try {
       await page.waitForSelector(
         'main, article, [role="main"], .markdown, .theme-doc-markdown, .markdown-body, .content',
@@ -91,9 +95,12 @@ export class BrowserService {
    * page.evaluate(), eliminating Node↔browser IPC round-trips.
    */
   async revealAllContent(page: Page) {
-    await page.evaluate(async () => {
+    const log = getLogger().child({ component: 'crawler:BrowserService' });
+
+    const tabCount = await page.evaluate(async () => {
       const tabSelectors = ['[role="tab"]', '.tabs__item', 'button[class*="tabs"]', '.tab-item'];
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      let clicked = 0;
 
       for (const selector of tabSelectors) {
         const tabs = document.querySelectorAll<HTMLElement>(selector);
@@ -106,12 +113,18 @@ export class BrowserService {
             if (!isSelected && !isPressed && !hasActiveClass) {
               tab.click();
               await sleep(50);
+              clicked++;
             }
           } catch {
             // Individual tab click failures are expected — ignore and move on.
           }
         }
       }
+      return clicked;
     });
+
+    if (tabCount > 0) {
+      log.trace({ tabCount }, 'browser:reveal_tabs');
+    }
   }
 }

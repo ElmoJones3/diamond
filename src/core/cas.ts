@@ -40,6 +40,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import fs from 'fs-extra';
 import { Env } from '#src/core/env.js';
+import { getLogger } from '#src/logger.js';
 
 export class CasStore {
   /**
@@ -53,11 +54,13 @@ export class CasStore {
    * @returns The hex-encoded SHA256 hash, which also serves as the content's address.
    */
   async save(content: string): Promise<string> {
+    const log = getLogger().child({ component: 'core:CasStore' });
     const hash = createHash('sha256').update(content).digest('hex');
     const storePath = path.join(Env.storeDir, hash.slice(0, 2), hash);
 
     // Content already in the store — nothing to do.
     if (await fs.pathExists(storePath)) {
+      log.trace({ hash }, 'cas:hit');
       return hash;
     }
 
@@ -71,6 +74,8 @@ export class CasStore {
 
     await fs.writeFile(tempPath, content);
     await fs.move(tempPath, storePath, { overwrite: true });
+
+    log.trace({ hash, bytes: content.length }, 'cas:write');
 
     return hash;
   }

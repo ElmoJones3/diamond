@@ -24,23 +24,24 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import robotsParser from 'robots-parser';
+import { getLogger } from '#src/logger.js';
 
 export interface DiscoveryOptions {
   rootUrl: string;
 }
 
 export class DiscoveryService {
-  // fast-xml-parser is a zero-dependency XML parser — lighter than a full DOM
-  // parser and well-suited for the simple key/value structure of sitemaps.
   private parser = new XMLParser();
 
   /**
    * Fetch and create a robots.txt parser for the given origin.
    */
   async getRobotsParser(rootUrl: string) {
+    const log = getLogger().child({ component: 'crawler:DiscoveryService' });
     const origin = new URL(rootUrl).origin;
     const robotsUrl = `${origin}/robots.txt`;
     const robotsTxt = await this.fetchRobotsTxt(robotsUrl);
+    log.debug({ robotsUrl, hasContent: robotsTxt.length > 0 }, 'discovery:robots');
     // robots-parser is CJS; default import not callable under NodeNext without this cast
     // biome-ignore lint/suspicious/noExplicitAny: robots-parser is CJS; default import not callable under NodeNext without this cast
     return (robotsParser as any)(robotsUrl, robotsTxt);
@@ -65,21 +66,17 @@ export class DiscoveryService {
    * @param rootUrl The base URL of the site being crawled.
    */
   async discoverFromSitemaps(rootUrl: string): Promise<string[]> {
+    const log = getLogger().child({ component: 'crawler:DiscoveryService' });
     const url = new URL(rootUrl);
     const origin = url.origin;
     const discoveredUrls: string[] = [];
 
-    // Seed the set with the two most common sitemap locations.
     const sitemapUrls = new Set<string>([`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`]);
 
-    // robots.txt is a plain-text file that search engines read for crawling
-    // rules. It also commonly includes `Sitemap:` directives pointing to
-    // sitemap files at custom paths. Parsing it is fast and free.
     try {
       const resp = await fetch(`${origin}/robots.txt`);
       if (resp.ok) {
         const text = await resp.text();
-        // Match lines like: "Sitemap: https://example.com/custom-sitemap.xml"
         const matches = text.matchAll(/^Sitemap:\s*(.*)$/gim);
         for (const match of matches) {
           if (match[1]) sitemapUrls.add(match[1].trim());
@@ -89,18 +86,18 @@ export class DiscoveryService {
       // robots.txt is optional — many sites don't have one
     }
 
-    // Parse every sitemap candidate. Individual failures are swallowed so a
-    // 404 on /sitemap_index.xml doesn't break the crawl.
     for (const sitemapUrl of sitemapUrls) {
       try {
         const urls = await this.parseSitemap(sitemapUrl);
+        if (urls.length > 0) {
+          log.debug({ url: sitemapUrl, urlCount: urls.length }, 'discovery:sitemap');
+        }
         discoveredUrls.push(...urls);
       } catch (_e) {
         // This sitemap didn't work — move on to the next candidate
       }
     }
 
-    // Deduplicate in case multiple sitemaps list the same URL.
     return Array.from(new Set(discoveredUrls));
   }
 
@@ -160,29 +157,24 @@ export class DiscoveryService {
 
   /**
    * Try to determine the library version from a URL or page HTML.
-   *
-   * Version strings in docs URLs are surprisingly common:
-   *   https://lexical.dev/docs/v0.21.0/api   → "0.21.0"
-   *   https://reactrouter.com/v6/api          → "6" (not matched currently)
-   *
-   * If the URL doesn't contain a semver segment, we fall back to checking
-   * well-known HTML `<meta>` tags that some documentation generators emit:
-   *   <meta name="version" content="2.12.10">
-   *   <meta name="docsearch:version" content="2.12.10">  (Algolia DocSearch)
-   *
-   * Returns null if no version can be determined — the caller should fall back
-   * to "latest" in that case.
    */
   async resolveVersion(url: string, html?: string): Promise<string | null> {
-    // Look for a semver-like segment in the URL path (/v1.2.3/ or /1.2.3/)
+    const log = getLogger().child({ component: 'crawler:DiscoveryService' });
+
     const versionMatch = url.match(/\/v?(\d+\.\d+\.\d+)\//);
-    if (versionMatch) return versionMatch[1];
+    if (versionMatch) {
+      log.debug({ method: 'url', version: versionMatch[1] }, 'discovery:version');
+      return versionMatch[1];
+    }
 
     if (html) {
       const docMatch =
         html.match(/<meta\s+name="version"\s+content="([^"]+)"/i) ||
         html.match(/<meta\s+name="docsearch:version"\s+content="([^"]+)"/i);
-      if (docMatch) return docMatch[1];
+      if (docMatch) {
+        log.debug({ method: 'meta', version: docMatch[1] }, 'discovery:version');
+        return docMatch[1];
+      }
     }
 
     return null;

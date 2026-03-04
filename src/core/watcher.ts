@@ -23,6 +23,7 @@
 import { type FSWatcher, watch } from 'chokidar';
 import { RegistryManager } from '#src/core/registry.js';
 import { SearchService } from '#src/core/search.js';
+import { getLogger } from '#src/logger.js';
 
 export class WatcherService {
   private watcher: FSWatcher | null = null;
@@ -33,25 +34,23 @@ export class WatcherService {
    * Start watching all registered repositories.
    */
   async start() {
+    const log = getLogger().child({ component: 'core:WatcherService' });
+
     await this.registry.init();
     const repos = this.registry.listEntries().filter((e) => e.type === 'repo');
 
     if (repos.length === 0) {
-      console.warn('No repositories registered. Use `diamond repo add <path>` to add one.');
+      log.warn('watcher:no_repos');
       return;
     }
 
     const paths = repos.map((r) => r.localPath);
-    console.warn(`
-Starting Watcher... monitoring ${repos.length} repositories:`);
-    for (const repo of repos) {
-      console.warn(`  - ${repo.id} (${repo.localPath})`);
-    }
+    log.info({ repoCount: repos.length, paths }, 'watcher:start');
 
     this.watcher = watch(paths, {
       ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/.cache/**'],
       persistent: true,
-      ignoreInitial: false, // We don't want to trigger a full re-index on start here, SearchService handles it
+      ignoreInitial: false,
     });
 
     this.watcher
@@ -59,22 +58,22 @@ Starting Watcher... monitoring ${repos.length} repositories:`);
       .on('change', (filePath) => this.handleChange(filePath, 'change'))
       .on('unlink', (filePath) => this.handleChange(filePath, 'unlink'));
 
-    console.warn('\nWatcher is active. Press Ctrl+C to stop.');
+    log.info('watcher:active');
   }
 
   private async handleChange(filePath: string, type: 'add' | 'change' | 'unlink') {
-    // Find which repo this file belongs to
+    const log = getLogger().child({ component: 'core:WatcherService' });
     const entries = this.registry.listEntries().filter((e) => e.type === 'repo');
     const repo = entries.find((e) => filePath.startsWith(e.localPath));
 
     if (!repo) return;
 
-    // console.warn(`[${type}] ${path.relative(repo.localPath, filePath)}`);
+    log.debug({ event: type, path: filePath, repoId: repo.id }, 'watcher:change');
 
     try {
       await this.search.updateRepoFile(repo.id, repo.localPath, filePath, type);
     } catch (e) {
-      console.error(`Failed to update index for ${filePath}:`, e);
+      log.error({ err: e, filePath }, 'watcher:update_fail');
     }
   }
 
