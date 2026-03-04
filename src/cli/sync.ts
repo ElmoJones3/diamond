@@ -28,6 +28,7 @@ import { SearchService } from '#src/core/search.js';
 import { StorageManager } from '#src/core/storage.js';
 import { CrawlerService } from '#src/crawler/crawler.js';
 import { DiscoveryService } from '#src/crawler/discovery.js';
+import { getLogger } from '#src/logger.js';
 
 export interface SyncCommandOptions {
   /** The short identifier for this library, e.g. "msw" or "zod". */
@@ -51,6 +52,9 @@ export interface SyncCommandOptions {
 }
 
 export async function syncCommand(url: string, options: SyncCommandOptions) {
+  const correlationId = crypto.randomUUID();
+  const log = getLogger().child({ component: 'cli:sync', correlationId });
+
   const crawler = new CrawlerService();
   const registry = new RegistryManager();
   const storage = new StorageManager();
@@ -62,14 +66,10 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
   const libId = options.key;
   let version = options.version || 'latest';
 
-  console.warn(`Syncing ${libId} from ${url}...`);
+  log.info({ url, libId, version, recursive: options.recursive, concurrency: options.concurrency }, 'sync:start');
 
   // -------------------------------------------------------------------------
   // Stage 1: Crawl
-  //
-  // CrawlerService handles discovery (sitemap), rendering (Playwright),
-  // content extraction (Readability), and conversion (HTML → Markdown).
-  // Each result is a { url, path, content, title } object.
   // -------------------------------------------------------------------------
   const results = await crawler.crawl({
     url,
@@ -77,51 +77,41 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     concurrency: options.concurrency,
     limit: options.limit,
     ignoreRobots: options.ignoreRobots,
+    correlationId,
   });
 
   if (results.length === 0) {
     throw new Error('Crawl returned zero results. Nothing to sync.');
   }
 
+  log.debug({ pageCount: results.length }, 'sync:crawl_complete');
+
   // -------------------------------------------------------------------------
   // Stage 2: Version Resolution
-  //
-  // If the user didn't specify a version, try to detect one.
-  // We check the root page first (most likely to have version info), then
-  // fall back to the URL itself. If nothing is found, we keep "latest" —
-  // which is fine for libraries that don't version their docs separately.
   // -------------------------------------------------------------------------
   if (version === 'latest') {
     const rootResult = results.find((r) => r.url === url);
     const resolved = await discovery.resolveVersion(url, rootResult?.content);
     if (resolved) {
-      console.warn(`Resolved 'latest' to version: ${resolved}`);
       version = resolved;
     }
   }
 
-  console.warn(`Discovered and transformed ${results.length} pages.`);
+  log.debug({ version }, 'sync:version_resolved');
 
   // -------------------------------------------------------------------------
   // Stage 3: Storage (CAS + Hardlinks)
-  //
-  // StorageManager writes each page's Markdown content into the CAS (keyed
-  // by SHA256 hash) and then creates a hardlink from the store to the
-  // versioned storage path. Identical content across versions costs zero
-  // extra disk space.
   // -------------------------------------------------------------------------
-  console.warn(`Writing to Content-Addressable Store (Version: ${version})...`);
   await storage.createVersion(
     libId,
     version,
     results.map((r) => ({ path: r.path, content: r.content })),
   );
 
+  log.debug({ fileCount: results.length }, 'sync:storage_complete');
+
   // -------------------------------------------------------------------------
   // Stage 4: Search Index
-  //
-  // Build and persist a MiniSearch keyword index — fast, always awaited.
-  // The library is fully searchable via search_library as soon as this returns.
   // -------------------------------------------------------------------------
   const searchDocs = results.map((r) => ({
     id: r.path,
@@ -130,15 +120,12 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     url: r.url,
   }));
 
-  console.warn('Building keyword index...');
   await search.indexVersion(libId, version, searchDocs);
+
+  log.debug({ docCount: searchDocs.length }, 'sync:index_complete');
 
   // -------------------------------------------------------------------------
   // Stage 5: Registry Update
-  //
-  // Record this version in the registry manifest. We merge with any existing
-  // versions so a re-sync (e.g. adding a newer version) doesn't erase the
-  // record of older synced versions.
   // -------------------------------------------------------------------------
   const existing = registry.getEntry(libId);
   const syncedAt = new Date().toISOString();
@@ -148,10 +135,8 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
     type: 'docs',
     name: libId,
     homepage: url,
-    // Prefer the newly supplied description; fall back to whatever was stored before.
     description: options.description ?? (existing?.type === 'docs' ? existing.description : undefined),
     versions: {
-      // Preserve any previously synced versions
       ...(existing?.type === 'docs' ? existing.versions : {}),
       [version]: { syncedAt },
     },
@@ -159,6 +144,6 @@ export async function syncCommand(url: string, options: SyncCommandOptions) {
 
   await registry.addEntry(entry);
 
-  console.warn(`\nSuccess! ${libId}@${version} is now synced and indexed.`);
-  console.warn(`Storage Location: ${storage.getLibPath(libId, version)}`);
+  const storagePath = storage.getLibPath(libId, version);
+  log.info({ libId, version, path: storagePath }, 'sync:complete');
 }

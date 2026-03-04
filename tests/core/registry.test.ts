@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'fs-extra';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Env } from '#src/core/env.js';
 import { type RegistryEntry, RegistryManager } from '#src/core/registry.js';
 
@@ -83,22 +83,17 @@ describe('RegistryManager', () => {
   });
 
   it('should handle corrupted registry file gracefully', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
     await fs.ensureDir(Env.configDir);
     await fs.writeFile(Env.registryPath, 'not-json');
 
     await registry.init();
 
+    // Corrupted JSON should result in empty registry (graceful recovery).
+    // Errors are now emitted via the structured pino logger, not console.error.
     expect(registry.listEntries()).toEqual([]);
-    expect(consoleSpy).toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
   });
 
   it('should handle schema validation errors during init', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
     await fs.ensureDir(Env.configDir);
     await fs.writeJson(Env.registryPath, {
       invalid: { type: 'docs', id: 'invalid' }, // Missing required fields
@@ -106,10 +101,9 @@ describe('RegistryManager', () => {
 
     await registry.init();
 
+    // Schema errors should result in empty registry (graceful recovery).
+    // Errors are now emitted via the structured pino logger, not console.error.
     expect(registry.listEntries()).toEqual([]);
-    expect(consoleSpy).toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
   });
 
   it('should remove entries and persist the change', async () => {

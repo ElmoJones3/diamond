@@ -25,6 +25,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { CrawlerService } from '#src/crawler/crawler.js';
+import { getLogger } from '#src/logger.js';
 
 export interface CrawlCommandOptions {
   /** Short name for the library, used as the output subdirectory name. */
@@ -48,14 +49,13 @@ export interface CrawlCommandOptions {
  * @param options Controls output location, crawl scope, and concurrency.
  */
 export async function crawlCommand(url: string, options: CrawlCommandOptions) {
+  const log = getLogger().child({ component: 'cli:crawl' });
   const crawler = new CrawlerService();
 
-  // All output goes into a subdirectory named after the library key, so
-  // crawling multiple libraries into the same outDir keeps them separated.
   const targetDir = path.resolve(options.outDir, options.key);
   await fs.ensureDir(targetDir);
 
-  console.warn(`Starting crawl of ${url}...`);
+  log.info({ url, key: options.key, outDir: options.outDir }, 'crawl:start');
 
   const results = await crawler.crawl({
     url,
@@ -65,8 +65,6 @@ export async function crawlCommand(url: string, options: CrawlCommandOptions) {
     limit: options.limit,
   });
 
-  // Write each crawled page to disk, preserving the URL path structure
-  // so `api/handlers` becomes `{targetDir}/api/handlers.md`.
   const manifest: Record<string, { title: string; path: string }> = {};
 
   for (const result of results) {
@@ -74,16 +72,13 @@ export async function crawlCommand(url: string, options: CrawlCommandOptions) {
     await fs.ensureDir(path.dirname(filePath));
     await fs.writeFile(filePath, result.content);
 
-    // Build a URL → { title, path } manifest for easy programmatic access.
     manifest[result.url] = {
       title: result.title,
       path: result.path,
     };
   }
 
-  // Write the manifest as the last step so its presence signals a complete,
-  // successful crawl (a partial crawl won't have a valid index.json).
   await fs.writeJson(path.join(targetDir, 'index.json'), manifest, { spaces: 2 });
 
-  console.warn(`\nSuccess! Documentation for '${options.key}' dropped at: ${targetDir}`);
+  log.info({ pageCount: results.length, targetDir }, 'crawl:complete');
 }

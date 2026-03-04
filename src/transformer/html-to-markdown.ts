@@ -32,6 +32,7 @@
 import { Readability } from '@mozilla/readability';
 import { convertHtmlToMarkdown } from 'dom-to-semantic-markdown';
 import { JSDOM } from 'jsdom';
+import { getLogger } from '#src/logger.js';
 
 export interface TransformationResult {
   /** The page title extracted by Readability (from `<title>` or the main heading). */
@@ -53,38 +54,32 @@ export class TransformerService {
    *             inside the content into absolute URLs.
    */
   async transform(html: string, url: string): Promise<TransformationResult> {
-    // Parse the full page HTML into a JSDOM document.
-    // Passing `url` lets JSDOM (and Readability) resolve relative hrefs correctly.
-    const dom = new JSDOM(html, { url });
+    const log = getLogger().child({ component: 'transformer:TransformerService' });
+    log.trace({ url }, 'transform:start');
 
+    const dom = new JSDOM(html, { url });
     const reader = new Readability(dom.window.document);
 
     // `parse()` returns null if Readability couldn't identify a main content
     // region (e.g. very sparse pages, or pages that are mostly navigation).
     const article = reader.parse();
     if (!article) {
+      log.warn({ url }, 'transform:readability_fail');
       throw new Error(`Failed to parse content from ${url} using Readability.`);
     }
 
-    // `article.content` is a sanitized HTML string containing only the main
-    // body content — all the nav/sidebar/footer noise has been removed.
-    // We wrap it in a fresh JSDOM so dom-to-semantic-markdown gets a clean
-    // document to work with, rather than the original noisy one.
     const cleanDom = new JSDOM(article.content || '');
 
-    // Convert the cleaned HTML to Markdown.
-    // We pass the JSDOM DOMParser so the library can use the same DOM instance
-    // rather than trying to create its own (which would fail in Node.js without
-    // a global `window`).
     const markdown = convertHtmlToMarkdown(cleanDom.window.document.body.innerHTML, {
       overrideDOMParser: new cleanDom.window.DOMParser(),
     });
 
+    const trimmed = markdown.trim();
+    log.trace({ url, markdownBytes: trimmed.length, title: article.title }, 'transform:ok');
+
     return {
       title: article.title || 'Untitled',
-      markdown: markdown.trim(),
-      // Readability returns null (not undefined) for missing fields — normalize
-      // to undefined so callers can use a simple truthiness check.
+      markdown: trimmed,
       excerpt: article.excerpt ?? undefined,
       byline: article.byline ?? undefined,
     };

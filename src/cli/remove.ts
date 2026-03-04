@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { Env } from '#src/core/env.js';
 import { RegistryManager } from '#src/core/registry.js';
+import { getLogger } from '#src/logger.js';
 
 /**
  * Remove an entry from Diamond's registry.
@@ -14,6 +15,7 @@ import { RegistryManager } from '#src/core/registry.js';
  * repository on disk is not touched.
  */
 export async function removeCommand(id: string): Promise<void> {
+  const log = getLogger().child({ component: 'cli:remove' });
   const registry = new RegistryManager();
   await registry.init();
 
@@ -26,10 +28,10 @@ export async function removeCommand(id: string): Promise<void> {
     const libDir = path.join(Env.storageDir, id);
     if (await fs.pathExists(libDir)) {
       await fs.remove(libDir);
-      console.warn(`Removed storage for "${id}" (${libDir})`);
+      log.info({ id, libDir }, 'remove:storage_deleted');
     }
   }
 
   await registry.removeEntry(id);
-  console.warn(`Removed "${id}" from registry`);
+  log.info({ id, type: entry.type }, 'remove:complete');
 }

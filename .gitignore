@@ -12,3 +12,4 @@ ai-sdk-core/
 
 docs/internal/
 .cache/
+.worktrees/

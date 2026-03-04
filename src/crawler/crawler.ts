@@ -24,6 +24,7 @@
 import { BrowserService } from '#src/crawler/browser.js';
 import { DiscoveryService } from '#src/crawler/discovery.js';
 import { WalkerService } from '#src/crawler/walker.js';
+import { getLogger } from '#src/logger.js';
 import { TransformerService } from '#src/transformer/html-to-markdown.js';
 
 /** Options for a single crawl run. */
@@ -52,6 +53,8 @@ export interface CrawlOptions {
    * with personal, offline use. Set this to true to proceed regardless.
    */
   ignoreRobots?: boolean;
+  /** Optional correlation ID for log tracing across a sync pipeline run. */
+  correlationId?: string;
 }
 
 /** The normalized output for a single crawled page. */
@@ -81,10 +84,14 @@ export class CrawlerService {
   private discovery = new DiscoveryService();
 
   async crawl(options: CrawlOptions): Promise<CrawlResult[]> {
-    const { url, recursive, concurrency = 10, limit, ignoreRobots } = options;
+    const { url, recursive, concurrency = 10, limit, ignoreRobots, correlationId } = options;
+    const log = getLogger().child({ component: 'crawler:CrawlerService', correlationId });
     const results: CrawlResult[] = [];
     const visited = new Set<string>();
     const queue: string[] = [url];
+    const startTime = Date.now();
+
+    log.info({ url, concurrency, recursive, limit }, 'crawl:start');
 
     try {
       await this.browser.init();
@@ -131,7 +138,6 @@ export class CrawlerService {
       // discovered links into the queue, then repeat — guaranteeing full
       // concurrency at every step.
       while (queue.length > 0 && !(limit && visited.size >= limit)) {
-        // Drain up to `concurrency` valid, unvisited, allowed URLs.
         const batch: string[] = [];
         while (batch.length < concurrency && queue.length > 0) {
           if (limit && visited.size + batch.length >= limit) break;
@@ -143,9 +149,7 @@ export class CrawlerService {
 
         if (batch.length === 0) break;
 
-        for (const u of batch) {
-          console.warn(`Crawling [${visited.size}/${limit ?? '?'}]: ${u}...`);
-        }
+        log.debug({ batchSize: batch.length, visited: visited.size, queued: queue.length }, 'crawl:batch');
 
         const batchResults = await Promise.all(
           batch.map((u) =>
@@ -156,8 +160,9 @@ export class CrawlerService {
               userAgent,
               queue,
               visited,
+              correlationId,
             }).catch((e) => {
-              console.error(`Failed to crawl ${u}:`, e);
+              log.warn({ url: u, err: e }, 'crawl:page_fail');
               return null;
             }),
           ),
@@ -167,6 +172,9 @@ export class CrawlerService {
           if (r) results.push(r);
         }
       }
+
+      const duration_ms = Date.now() - startTime;
+      log.info({ pagesVisited: visited.size, duration_ms }, 'crawl:complete');
 
       return results;
     } finally {
@@ -186,8 +194,11 @@ export class CrawlerService {
       userAgent: string;
       queue: string[];
       visited: Set<string>;
+      correlationId?: string;
     },
   ): Promise<CrawlResult | null> {
+    const log = getLogger().child({ component: 'crawler:CrawlerService', correlationId: context.correlationId });
+
     const page = await this.browser.getPage(currentUrl);
     await this.browser.revealAllContent(page);
 
@@ -207,6 +218,8 @@ export class CrawlerService {
     }
 
     await page.close();
+
+    log.debug({ url: currentUrl, markdownBytes: result.markdown.length }, 'crawl:page_ok');
 
     return {
       url: currentUrl,

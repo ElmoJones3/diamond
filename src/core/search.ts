@@ -6,6 +6,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import MiniSearch from 'minisearch';
 import { Env } from '#src/core/env.js';
+import { getLogger } from '#src/logger.js';
 
 /** The shape of a document as it enters the search index. */
 export interface SearchDoc {
@@ -37,12 +38,14 @@ export class SearchService {
    * after this call returns.
    */
   async indexVersion(libId: string, version: string, docs: SearchDoc[]): Promise<void> {
+    const log = getLogger().child({ component: 'core:SearchService' });
+    log.debug({ lib: libId, version, docCount: docs.length }, 'search:index_start');
+
     const indexDir = path.join(Env.storageDir, libId, version);
     await fs.ensureDir(indexDir);
 
     const keywordPath = path.join(indexDir, 'search-index.json');
 
-    // Load existing keyword index or create fresh
     let miniSearch: MiniSearch;
     if (await fs.pathExists(keywordPath)) {
       const data = await fs.readJson(keywordPath);
@@ -61,19 +64,23 @@ export class SearchService {
       });
     }
 
-    // Deduplicate incoming docs by ID
     const seen = new Map<string, SearchDoc>();
     for (const doc of docs) seen.set(doc.id, doc);
     const uniqueDocs = Array.from(seen.values());
 
-    // Merge: replace existing docs, add new ones
+    let newCount = 0;
+    let replaceCount = 0;
     for (const doc of uniqueDocs) {
       if (miniSearch.has(doc.id)) {
         miniSearch.replace(doc);
+        replaceCount++;
       } else {
         miniSearch.add(doc);
+        newCount++;
       }
     }
+
+    log.debug({ lib: libId, new: newCount, replaced: replaceCount }, 'search:merge');
 
     await fs.writeJson(keywordPath, miniSearch.toJSON());
   }
@@ -82,12 +89,16 @@ export class SearchService {
    * Search a library's index and return ranked results.
    */
   async search(libId: string, version: string, query: string): Promise<DiamondSearchResult[]> {
+    const log = getLogger().child({ component: 'core:SearchService' });
+    const startTime = Date.now();
     const indexDir = path.join(Env.storageDir, libId, version);
     const keywordPath = path.join(indexDir, 'search-index.json');
 
     if (!(await fs.pathExists(keywordPath))) return [];
 
-    return this.runKeywordSearch(keywordPath, query);
+    const results = await this.runKeywordSearch(keywordPath, query);
+    log.debug({ query, resultCount: results.length, duration_ms: Date.now() - startTime }, 'search:query');
+    return results;
   }
 
   private async runKeywordSearch(keywordPath: string, query: string): Promise<DiamondSearchResult[]> {

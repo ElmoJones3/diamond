@@ -7,11 +7,12 @@
     "diamond": "./dist/index.js"
   },
   "scripts": {
-    "prepare": "tsc",
-    "build": "tsc",
-    "watch": "tsc -w",
+    "prepare": "tsc -p tsconfig.build.json && simple-git-hooks",
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json -w",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "format:all": "biome check --write --unsafe .",
     "test": "vitest run",
     "start": "node dist/index.js"
   },
@@ -38,6 +39,13 @@
     "url": "https://github.com/elmojones3/diamond/issues"
   },
   "packageManager": "pnpm@10.13.1",
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged",
+    "pre-push": "pnpm test"
+  },
+  "lint-staged": {
+    "*.{ts,json}": "biome check --write --no-errors-on-unmatched"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@mozilla/readability": "^0.6.0",
@@ -48,6 +56,7 @@
     "fs-extra": "^11.3.3",
     "jsdom": "^28.1.0",
     "minisearch": "^7.2.0",
+    "pino": "^10.3.1",
     "playwright": "^1.58.2",
     "robots-parser": "^3.0.1",
     "zod": "^4.3.6"
@@ -58,6 +67,8 @@
     "@types/jsdom": "^28.0.0",
     "@types/mozilla-readability": "^0.2.1",
     "@types/node": "^25.3.3",
+    "lint-staged": "^15.5.2",
+    "simple-git-hooks": "^2.13.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

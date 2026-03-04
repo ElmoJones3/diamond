@@ -7,28 +7,31 @@
  */
 
 import { WatcherService } from '#src/core/watcher.js';
+import { getLogger } from '#src/logger.js';
 
 /**
  * Start the live repository watcher.
  */
 export async function watchCommand(): Promise<void> {
+  const log = getLogger().child({ component: 'cli:watch' });
   const watcher = new WatcherService();
 
   try {
     await watcher.start();
 
-    // Keep process alive
     process.on('SIGINT', async () => {
+      log.info('watch:stopping');
       await watcher.stop();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
+      log.info('watch:stopping');
       await watcher.stop();
       process.exit(0);
     });
   } catch (e) {
-    console.error('Fatal error in watcher:', e);
+    log.error({ err: e }, 'Fatal error in watcher');
     await watcher.stop();
     process.exit(1);
   }

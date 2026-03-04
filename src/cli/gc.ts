@@ -23,10 +23,13 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { Env } from '#src/core/env.js';
+import { getLogger } from '#src/logger.js';
 
 export async function gcCommand(): Promise<void> {
+  const log = getLogger().child({ component: 'cli:gc' });
+
   if (!(await fs.pathExists(Env.storeDir))) {
-    console.warn('CAS store is empty — nothing to collect.');
+    log.info('gc:empty');
     return;
   }
 
@@ -34,7 +37,8 @@ export async function gcCommand(): Promise<void> {
   let removed = 0;
   let bytesFreed = 0;
 
-  // The store is two levels deep: store/{2-char-prefix}/{full-hash}
+  log.info('gc:start');
+
   const prefixDirs = await fs.readdir(Env.storeDir);
 
   for (const prefix of prefixDirs) {
@@ -53,20 +57,15 @@ export async function gcCommand(): Promise<void> {
         bytesFreed += blobStat.size;
         await fs.remove(blobPath);
         removed++;
+        log.debug({ hash: blob, bytes: blobStat.size }, 'gc:removed');
       }
     }
 
-    // Clean up empty prefix directories left behind after blob removal.
     const remaining = await fs.readdir(prefixPath);
     if (remaining.length === 0) {
       await fs.remove(prefixPath);
     }
   }
 
-  if (removed === 0) {
-    console.warn(`Checked ${checked} blob(s) — nothing to collect.`);
-  } else {
-    const kb = (bytesFreed / 1024).toFixed(1);
-    console.warn(`Removed ${removed} orphaned blob(s), freed ${kb} KB. (${checked} checked)`);
-  }
+  log.info({ checked, removed, bytesFreed }, 'gc:complete');
 }
