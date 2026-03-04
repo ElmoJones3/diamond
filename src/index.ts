@@ -29,7 +29,6 @@
  */
 
 import { Command } from 'commander';
-
 import { crawlCommand } from '#src/cli/crawl.js';
 import { gcCommand } from '#src/cli/gc.js';
 import { installCommand } from '#src/cli/install.js';
@@ -37,7 +36,7 @@ import { removeCommand } from '#src/cli/remove.js';
 import { addRepoCommand } from '#src/cli/repo.js';
 import { syncCommand } from '#src/cli/sync.js';
 import { watchCommand } from '#src/cli/watch.js';
-import { initLogger, getLogger } from '#src/logger.js';
+import { getLogger, initLogger } from '#src/logger.js';
 import { McpServer } from '#src/mcp/server.js';
 
 const program = new Command();
@@ -257,7 +256,7 @@ repo
 // before any command action fires. The --verbose and --log-file options are
 // parsed from process.argv directly since Commander hasn't parsed yet.
 const verboseFlag = process.argv.includes('--verbose') || process.argv.includes('-v');
-const logFileIdx = process.argv.findIndex((a) => a === '--log-file');
+const logFileIdx = process.argv.indexOf('--log-file');
 const logFileArg = logFileIdx !== -1 ? process.argv[logFileIdx + 1] : undefined;
 const level = verboseFlag ? 'trace' : (process.env.LOG_LEVEL ?? 'info');
 initLogger(level, logFileArg);
