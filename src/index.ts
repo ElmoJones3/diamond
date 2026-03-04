@@ -34,7 +34,9 @@ import { gcCommand } from '#src/cli/gc.js';
 import { installCommand } from '#src/cli/install.js';
 import { removeCommand } from '#src/cli/remove.js';
 import { addRepoCommand } from '#src/cli/repo.js';
+import { serveCommand } from '#src/cli/serve.js';
 import { syncCommand } from '#src/cli/sync.js';
+import { viewServerCommand } from '#src/cli/view.js';
 import { watchCommand } from '#src/cli/watch.js';
 import { getLogger, initLogger } from '#src/logger.js';
 import { McpServer } from '#src/mcp/server.js';
@@ -115,18 +117,56 @@ program
   });
 
 // -----------------------------------------------------------------------------
-// serve — launch the MCP server over stdio
+// mcp — launch the MCP server over stdio (spawned on-demand by MCP hosts)
 // -----------------------------------------------------------------------------
 program
-  .command('serve')
-  .description('Start the Diamond MCP server (connect via Claude Desktop, Cursor, etc.)')
+  .command('mcp')
+  .description('Start the Diamond MCP server over stdio (for Claude Code, Cursor, etc.)')
   .action(async () => {
-    const log = getLogger().child({ component: 'cli:serve' });
+    const log = getLogger().child({ component: 'cli:mcp' });
     try {
       const server = new McpServer();
       await server.run();
     } catch (e) {
       log.error({ err: e }, 'Fatal error in MCP server');
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
+// serve — persistent HTTP/SSE MCP server (foreground or background daemon)
+// -----------------------------------------------------------------------------
+const DEFAULT_PORT = parseInt(process.env.DIAMOND_PORT ?? '65535', 10);
+
+program
+  .command('serve')
+  .description('Start the Diamond MCP server over HTTP (persistent, reconnectable)')
+  .option('--port <number>', 'Port to listen on (env: DIAMOND_PORT)', String(DEFAULT_PORT))
+  .option('--bg', 'Run as a background daemon', false)
+  .action(async (options) => {
+    const log = getLogger().child({ component: 'cli:serve' });
+    try {
+      await serveCommand({ port: parseInt(options.port, 10), bg: options.bg });
+    } catch (e) {
+      log.error({ err: e }, 'Fatal error in serve');
+      process.exit(1);
+    }
+  });
+
+// -----------------------------------------------------------------------------
+// view — inspect running Diamond services
+// -----------------------------------------------------------------------------
+const view = program.command('view').description('Inspect running Diamond services');
+
+view
+  .command('server')
+  .description('Show status and tail logs of the running background server')
+  .action(async () => {
+    const log = getLogger().child({ component: 'cli:view' });
+    try {
+      await viewServerCommand();
+    } catch (e) {
+      log.error({ err: e }, 'Fatal error in view server');
       process.exit(1);
     }
   });

@@ -106,4 +106,17 @@ export const Env = {
   get registryPath() {
     return path.join(this.configDir, 'registry.json');
   },
+
+  /**
+   * The path to the running server state file.
+   *
+   * Written by `diamond serve` on startup; removed on graceful exit.
+   * Contains { pid, port, startedAt } so `diamond view server` can locate
+   * and report on the background process.
+   *
+   * Example path: `~/.local/share/diamond/server.json`
+   */
+  get serverStatePath() {
+    return path.join(this.dataDir, 'server.json');
+  },
 } as const;
