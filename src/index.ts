@@ -11,8 +11,8 @@
  *     • serve  — start the MCP server for AI assistant integration.
  *     • repo   — manage local git repositories in the registry.
  *
- *   As an MCP server:  `diamond serve`
- *     The serve command launches the Diamond MCP server over stdio, making
+ *   As an MCP server:  `diamond mcp`
+ *     The mcp command launches the Diamond MCP server over stdio, making
  *     all of Diamond's capabilities available to any MCP-compatible AI host
  *     (Claude Desktop, Cursor, etc.) without the user needing to run any
  *     other commands.
@@ -181,6 +181,7 @@ program
   .option('--claude-desktop', 'Install into Claude Desktop')
   .option('--cursor', 'Install into Cursor (~/.cursor/mcp.json)')
   .option('--gemini-cli', 'Install into Gemini CLI (~/.gemini/settings.json)')
+  .option('--codex', 'Install into Codex (~/.codex/config.toml)')
   .action(async (options) => {
     const log = getLogger().child({ component: 'cli:install' });
     const targets: string[] = [];
@@ -188,6 +189,7 @@ program
     if (options.claudeDesktop) targets.push('claude-desktop');
     if (options.cursor) targets.push('cursor');
     if (options.geminiCli) targets.push('gemini-cli');
+    if (options.codex) targets.push('codex');
 
     if (targets.length === 0) {
       log.warn('No install targets specified');
@@ -196,7 +198,8 @@ program
       process.stderr.write('  diamond install --claude-desktop\n');
       process.stderr.write('  diamond install --cursor\n');
       process.stderr.write('  diamond install --gemini-cli\n');
-      process.stderr.write('\nFlags can be combined: diamond install --claude-code --gemini-cli\n');
+      process.stderr.write('  diamond install --codex\n');
+      process.stderr.write('\nFlags can be combined: diamond install --claude-code --gemini-cli --codex\n');
       process.exit(0);
     }
 

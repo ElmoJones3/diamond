@@ -58,7 +58,7 @@ Keeps a long-running process that monitors all registered local repositories. Wh
 Automatically configure Diamond as an MCP server in your tools.
 
 ```bash
-diamond install --gemini-cli --claude-code --cursor
+diamond install --gemini-cli --claude-code --cursor --codex
 ```
 
 | Flag | Target Path |
@@ -67,6 +67,7 @@ diamond install --gemini-cli --claude-code --cursor
 | `--claude-code` | `~/.claude.json` |
 | `--claude-desktop` | `~/Library/Application Support/Claude/...` |
 | `--cursor` | `~/.cursor/mcp.json` |
+| `--codex` | `~/.codex/config.toml` |
 
 ---
 
@@ -104,7 +105,7 @@ For `docs` entries, this also deletes the versioned storage directory to reclaim
 
 ---
 
-### `diamond serve`
+### `diamond mcp`
 
 Start the Diamond MCP server over stdio. Configure this command in your AI host's settings to enable Diamond's capabilities.
 

@@ -36,7 +36,7 @@ describe('installCommand', () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(settings.mcpServers.diamond).toEqual({
       command: '/usr/local/bin/diamond',
-      args: ['serve'],
+      args: ['mcp'],
     });
   });
 
@@ -49,8 +49,20 @@ describe('installCommand', () => {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.mcpServers.diamond).toEqual({
       command: '/usr/local/bin/diamond',
-      args: ['serve'],
+      args: ['mcp'],
     });
+  });
+
+  it('should install into Codex config', async () => {
+    const configPath = path.join(tmpHome, '.codex', 'config.toml');
+
+    await installCommand({ targets: ['codex'] });
+
+    expect(fs.existsSync(configPath)).toBe(true);
+    const config = fs.readFileSync(configPath, 'utf8');
+    expect(config).toContain('[mcp_servers.diamond]');
+    expect(config).toContain('command = "/usr/local/bin/diamond"');
+    expect(config).toContain('args = ["mcp"]');
   });
 
   it('should merge with existing settings', async () => {
@@ -73,9 +85,10 @@ describe('installCommand', () => {
   });
 
   it('should install into multiple targets at once', async () => {
-    await installCommand({ targets: ['gemini-cli', 'claude-code'] });
+    await installCommand({ targets: ['gemini-cli', 'claude-code', 'codex'] });
 
     expect(fs.existsSync(path.join(tmpHome, '.gemini', 'settings.json'))).toBe(true);
     expect(fs.existsSync(path.join(tmpHome, '.claude.json'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpHome, '.codex', 'config.toml'))).toBe(true);
   });
 });

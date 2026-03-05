@@ -5,6 +5,7 @@
  *   - Claude Code  (~/.claude.json, user-scope mcpServers)
  *   - Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
  *   - Cursor (~/.cursor/mcp.json)
+ *   - Codex (~/.codex/config.toml)
  *
  * Each target is attempted independently — a failure for one doesn't block
  * the others. The command reports success/skip/failure for each target.
@@ -115,6 +116,47 @@ function installGemini(entry: McpServerEntry): string {
   return configPath;
 }
 
+function formatTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function formatTomlStringArray(values: string[]): string {
+  return `[${values.map((v) => formatTomlString(v)).join(', ')}]`;
+}
+
+function upsertCodexMcpServer(configText: string, name: string, entry: McpServerEntry): string {
+  const header = `[mcp_servers.${name}]`;
+  const sectionLines = [
+    header,
+    `command = ${formatTomlString(entry.command)}`,
+    `args = ${formatTomlStringArray(entry.args)}`,
+  ];
+  const section = sectionLines.join('\n');
+
+  const lines = configText.split('\n');
+  const start = lines.findIndex((line) => line.trim() === header);
+
+  if (start !== -1) {
+    let end = start + 1;
+    while (end < lines.length && !lines[end]?.trim().startsWith('[')) end += 1;
+    lines.splice(start, end - start, ...sectionLines);
+    return `${lines.join('\n').replace(/\s+$/, '')}\n`;
+  }
+
+  const trimmed = configText.replace(/\s+$/, '');
+  if (!trimmed) return `${section}\n`;
+  return `${trimmed}\n\n${section}\n`;
+}
+
+function installCodex(entry: McpServerEntry): string {
+  const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+  const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+  const updated = upsertCodexMcpServer(existing, 'diamond', entry);
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, updated, 'utf8');
+  return configPath;
+}
+
 // ─── Target registry ─────────────────────────────────────────────────────────
 
 type Target = {
@@ -148,6 +190,12 @@ const TARGETS: Target[] = [
     install: installGemini,
     restartNote: 'New sessions will automatically include the Diamond MCP server.',
   },
+  {
+    name: 'Codex',
+    flag: 'codex',
+    install: installCodex,
+    restartNote: 'Restart Codex or open a new session to load the new MCP server.',
+  },
 ];
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -155,7 +203,7 @@ const TARGETS: Target[] = [
 export async function installCommand(options: { targets: string[] }) {
   const log = getLogger().child({ component: 'cli:install' });
   const diamondBin = resolveDiamondBin();
-  const entry: McpServerEntry = { command: diamondBin, args: ['serve'] };
+  const entry: McpServerEntry = { command: diamondBin, args: ['mcp'] };
 
   const activeTargets = options.targets.length > 0 ? TARGETS.filter((t) => options.targets.includes(t.flag)) : TARGETS;
 
