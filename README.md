@@ -31,8 +31,11 @@ diamond sync https://mswjs.io/docs --key msw --recursive
 # Install as an MCP server (Claude Code, Claude Desktop, Cursor, Gemini CLI, or Codex)
 diamond install --claude-code
 
-# Start the MCP server
-diamond serve
+# Start MCP over stdio (used by MCP hosts)
+diamond mcp
+
+# Or run a persistent local HTTP MCP endpoint
+diamond serve --port 65535 --bg
 ```
 
 That's it. Your AI assistant now has offline access to MSW's documentation.
@@ -52,7 +55,7 @@ Diamond builds two indices for every library: a fast MiniSearch keyword index an
 Content is hashed with SHA-256 and stored once, regardless of how many library versions reference it. Versioned directories are hardlinks into this store, so multiple versions cost almost nothing extra.
 
 **5. Serve over MCP.**
-`diamond serve` exposes everything to any MCP-compatible AI host via tools and resource URIs:
+`diamond mcp` (stdio) or `diamond serve` (HTTP) exposes everything to any MCP-compatible AI host via tools and resource URIs:
 
 ```
 docs://msw/latest/api/handlers     ← read a specific page
@@ -68,8 +71,17 @@ diamond sync <url> --key <name> --recursive
 # One-shot crawl to a local directory (no registry)
 diamond crawl <url> --key <name> --recursive
 
-# Start the MCP server
-diamond serve
+# Start MCP over stdio (for host-managed MCP processes)
+diamond mcp
+
+# Start persistent HTTP MCP server
+diamond serve --port 65535
+
+# Run persistent HTTP MCP server in the background
+diamond serve --bg
+
+# Inspect running background server and tail logs
+diamond view server
 
 # Register a local git repository (immediately indexed and searchable)
 diamond repo add <path> --key <name>
@@ -84,9 +96,15 @@ diamond remove <id>
 diamond install --claude-code --claude-desktop --cursor --gemini-cli --codex
 ```
 
+### Which Server Command Should I Use?
+
+- Use `diamond mcp` for Claude Code, Cursor, Codex, and other MCP hosts that spawn a stdio MCP process.
+- Use `diamond serve` when you want a persistent local HTTP endpoint (`http://127.0.0.1:<port>/mcp`), including daemon mode via `--bg`.
+- `diamond serve` defaults to port `65535`; override with `--port` or `DIAMOND_PORT`.
+
 ## MCP Tools
 
-Once `diamond serve` is running, your AI assistant has access to:
+Once your MCP host is configured with `diamond mcp` (or you run `diamond serve` for HTTP), your AI assistant has access to:
 
 | Tool | What it does |
 |---|---|
@@ -121,6 +139,13 @@ You can use `diamond install` to automatically configure your tools, or manually
     }
   }
 }
+```
+
+**Codex** (`~/.codex/config.toml`):
+```toml
+[mcp_servers.diamond]
+command = "diamond"
+args = ["mcp"]
 ```
 
 ## Storage Layout
