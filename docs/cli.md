@@ -109,10 +109,44 @@ For `docs` entries, this also deletes the versioned storage directory to reclaim
 
 Start the Diamond MCP server over stdio. Configure this command in your AI host's settings to enable Diamond's capabilities.
 
+---
+
+### `diamond serve`
+
+Start a persistent HTTP MCP server (foreground by default).
+
+```bash
+diamond serve
+diamond serve --port 7777
+diamond serve --bg
+```
+
+The HTTP MCP endpoint is available at `http://127.0.0.1:<port>/mcp`.
+
+| Option | Default | Description |
+|---|---|---|
+| `--port <number>` | `DIAMOND_PORT` or `65535` | Port to bind on `127.0.0.1` |
+| `--bg` | `false` | Run as a detached background daemon |
+
+---
+
+### `diamond view server`
+
+Inspect the background HTTP server and tail logs.
+
+```bash
+diamond view server
+```
+
+Displays PID, port, uptime, endpoint URL, then follows `diamond.log` until interrupted.
+
 ## Shared Behavior
 
 **Respectful Crawling.** Diamond identifies as `DiamondCrawler` and respects `robots.txt` directives (Disallow/Allow).
 
 **stdout is clean.** All progress output goes to stderr (`console.warn`). 
+
+**Environment Variables.**
+- `DIAMOND_PORT`: default port for `diamond serve` (used when `--port` is not provided).
 
 **Exit codes.** All commands exit `0` on success, `1` on any fatal error.
