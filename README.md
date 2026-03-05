@@ -28,7 +28,7 @@ pnpm link --global
 # Sync a library's docs
 diamond sync https://mswjs.io/docs --key msw --recursive
 
-# Install as an MCP server (Claude Code, Claude Desktop, Cursor, or Gemini CLI)
+# Install as an MCP server (Claude Code, Claude Desktop, Cursor, Gemini CLI, or Codex)
 diamond install --claude-code
 
 # Start the MCP server
@@ -81,7 +81,7 @@ diamond watch
 diamond remove <id>
 
 # Automatic MCP configuration
-diamond install --claude-code --claude-desktop --cursor --gemini-cli
+diamond install --claude-code --claude-desktop --cursor --gemini-cli --codex
 ```
 
 ## MCP Tools
@@ -105,7 +105,7 @@ You can use `diamond install` to automatically configure your tools, or manually
   "mcpServers": {
     "diamond": {
       "command": "diamond",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }
@@ -117,7 +117,7 @@ You can use `diamond install` to automatically configure your tools, or manually
   "mcpServers": {
     "diamond": {
       "command": "diamond",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }

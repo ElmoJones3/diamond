@@ -6,14 +6,17 @@
  * data and interact with live tools and resources.
  */
 
+import http from 'node:http';
 import path from 'node:path';
 import { ResourceTemplate, McpServer as SdkMcpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import fs from 'fs-extra';
 import * as z from 'zod';
 
 import { removeCommand } from '#src/cli/remove.js';
 import { syncCommand } from '#src/cli/sync.js';
+import { Env } from '#src/core/env.js';
 import { RegistryManager } from '#src/core/registry.js';
 import { SearchService } from '#src/core/search.js';
 import { StorageManager } from '#src/core/storage.js';
@@ -262,6 +265,43 @@ export class McpServer {
     const transport = new StdioServerTransport();
     await this.mcp.connect(transport);
     log.debug('mcp:ready');
+  }
+
+  async runHttp(port: number) {
+    const log = getLogger().child({ component: 'mcp:server' });
+
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await this.mcp.connect(transport);
+
+    const httpServer = http.createServer((req, res) => {
+      if (req.url === '/mcp') {
+        transport.handleRequest(req, res);
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      httpServer.on('error', reject);
+      httpServer.listen(port, '127.0.0.1', resolve);
+    });
+
+    await fs.ensureDir(path.dirname(Env.serverStatePath));
+    await fs.writeJson(Env.serverStatePath, { pid: process.pid, port, startedAt: new Date().toISOString() });
+
+    log.info({ port }, 'mcp:http_ready');
+    process.stderr.write(`Diamond MCP server running on http://127.0.0.1:${port}/mcp\n`);
+
+    const cleanup = async () => {
+      await fs.remove(Env.serverStatePath).catch(() => {});
+      await transport.close();
+      httpServer.close();
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
   }
 
   private async walkRepo(dir: string, localPath: string, files: string[]) {

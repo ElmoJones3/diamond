@@ -5,7 +5,7 @@ Diamond exposes its capabilities to AI assistants via the Model Context Protocol
 ## Starting the Server
 
 ```bash
-diamond serve
+diamond mcp
 ```
 
 Or configure it in your AI host's MCP settings using `diamond install`.

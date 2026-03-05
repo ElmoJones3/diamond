@@ -11,5 +11,6 @@ readability/
 ai-sdk-core/
 
 docs/internal/
+docs/plans/
 .cache/
 .worktrees/
